@@ -192,12 +192,12 @@ void viewer_gl::update_rotate()
 void viewer_gl::set_color(int type)
 {
 	static const GLfloat colors[7][3] = 
-		{ { 1.0f, 0.0f, 0.0f }, // top
-		  { 0.0f, 1.0f, 0.0f }, // front
-		  { 0.4f, 0.4f, 1.0f }, // left
-		  { 1.0f, 0.5f, 0.0f }, // back
-		  { 1.0f, 1.0f, 1.0f }, // right
-		  { 1.0f, 0.0f, 1.0f }, // bottom
+		{ { 0.0f, 1.0f, 0.0f }, // top    (green)
+		  { 1.0f, 0.3f, 0.3f }, // front  (red)
+		  { 1.0f, 1.0f, 0.0f }, // left   (yellow)
+		  { 1.0f, 0.5f, 0.0f }, // back   (orange)
+		  { 1.0f, 1.0f, 1.0f }, // right  (white)
+		  { 0.3f, 0.3f, 1.0f }, // bottom (blue)
 		  { 0.0f, 0.0f, 0.0f }  // frame
 		};
 
