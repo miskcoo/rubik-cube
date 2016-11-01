@@ -1,4 +1,5 @@
 #include "viewer.h"
+#include "virtual_rotate.hpp"
 #include <chrono>
 #include <queue>
 #include <algorithm>
@@ -59,6 +60,8 @@ public:
 	void add_rotate(face_t::face_type, int);
 public:
 	static void on_resize(GLFWwindow*, int, int);
+	static void on_mouse_button(GLFWwindow*, int, int, int);
+	static void on_mouse_move(GLFWwindow*, double, double);
 private:
 	void draw_cube();
 	void draw_block(GLfloat x, GLfloat y, GLfloat z, GLfloat size, block_t, GLenum);
@@ -72,6 +75,8 @@ private:
 	GLfloat rotate_deg, rotate_vec;
 	rotate_manager_t rotate_manager;
 	double rotate_duration;
+
+	virtual_ball_t vball;
 
 	cube_t cube;
 	GLFWwindow* window;
@@ -106,10 +111,14 @@ bool viewer_gl::init(int&, char**&)
 
 	glfwSetWindowUserPointer(window, this);
 	glfwSetWindowSizeCallback(window, on_resize);
+	glfwSetCursorPosCallback(window, on_mouse_move);
+	glfwSetMouseButtonCallback(window, on_mouse_button);
 
 	glfwMakeContextCurrent(window);
 	glEnable(GL_MULTISAMPLE);
 	glEnable(GL_DEPTH_TEST);
+
+	vball.set_rotate(45, { -1, 1, 0 } );
 
 	return true;
 }
@@ -160,6 +169,7 @@ void viewer_gl::update_rotate()
 			break;
 		case face_t::bottom:
 			rotate_mask[0] = 0;
+			rotate_vec = -rotate_vec;
 			break;
 		case face_t::left:
 			rotate_mask[2] = 0;
@@ -288,7 +298,7 @@ void viewer_gl::draw_cube()
 
 	glPushMatrix();
 
-	glRotatef(45.0f, -1.0f, 1.0f, 0.0f);
+	vball.rotate();
 	glLineWidth(1.5f);
 
 	GLfloat base = -size * 1.5f, x, y, z;
@@ -322,6 +332,37 @@ void viewer_gl::on_resize(GLFWwindow* window, int w, int h)
 	glOrtho(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0);
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
+}
+
+void viewer_gl::on_mouse_button(GLFWwindow* window, int button, int action, int)
+{
+	if(button != GLFW_MOUSE_BUTTON_LEFT)
+		return;
+
+	viewer_gl* viewer = reinterpret_cast<viewer_gl*>(glfwGetWindowUserPointer(window));
+
+	int w, h;
+	double x, y;
+	glfwGetWindowSize(window, &w, &h);
+	glfwGetCursorPos(window, &x, &y);
+	if(action == GLFW_PRESS)
+	{
+		viewer->vball.set_start(x / w - 0.5, y / h - 0.5);
+	} else if(action == GLFW_RELEASE) {
+		viewer->vball.set_end(x / w - 0.5, y / h - 0.5);
+	}
+}
+
+void viewer_gl::on_mouse_move(GLFWwindow* window, double x, double y)
+{
+	viewer_gl* viewer = reinterpret_cast<viewer_gl*>(glfwGetWindowUserPointer(window));
+
+	if(!viewer->vball)
+		return;
+
+	int w, h;
+	glfwGetWindowSize(window, &w, &h);
+	viewer->vball.set_middle(x / w - 0.5, y / h - 0.5);
 }
 
 } // namespace __viewer_gl_impl
