@@ -61,7 +61,7 @@ public:
 	static void on_resize(GLFWwindow*, int, int);
 private:
 	void draw_cube();
-	void draw_block(GLfloat x, GLfloat y, GLfloat z, GLfloat size, block_t);
+	void draw_block(GLfloat x, GLfloat y, GLfloat z, GLfloat size, block_t, GLenum);
 	void update_rotate();
 	void set_color(int);
 private:
@@ -191,13 +191,14 @@ void viewer_gl::update_rotate()
 
 void viewer_gl::set_color(int type)
 {
-	static const GLfloat colors[6][3] = 
+	static const GLfloat colors[7][3] = 
 		{ { 1.0f, 0.0f, 0.0f }, // top
 		  { 0.0f, 1.0f, 0.0f }, // front
 		  { 0.4f, 0.4f, 1.0f }, // left
 		  { 1.0f, 0.5f, 0.0f }, // back
 		  { 1.0f, 1.0f, 1.0f }, // right
-		  { 1.0f, 0.0f, 1.0f }  // bottom
+		  { 1.0f, 0.0f, 1.0f }, // bottom
+		  { 0.0f, 0.0f, 0.0f }  // frame
 		};
 
 	const GLfloat *C = colors[type];
@@ -209,10 +210,10 @@ void viewer_gl::set_rotate_duration(double sec)
 	rotate_duration = sec;
 }
 
-void viewer_gl::draw_block(GLfloat x, GLfloat y, GLfloat z, GLfloat s, block_t color)
+void viewer_gl::draw_block(GLfloat x, GLfloat y, GLfloat z, GLfloat s, block_t color, GLenum type)
 {
 	set_color(color.back);
-	glBegin(GL_QUADS);
+	glBegin(type);
 		glVertex3f(x,     y,     z);
 		glVertex3f(x,     y + s, z);
 		glVertex3f(x + s, y + s, z);
@@ -220,7 +221,7 @@ void viewer_gl::draw_block(GLfloat x, GLfloat y, GLfloat z, GLfloat s, block_t c
 	glEnd();
 
 	set_color(color.front);
-	glBegin(GL_QUADS);
+	glBegin(type);
 		glVertex3f(x,     y,     z - s);
 		glVertex3f(x,     y + s, z - s);
 		glVertex3f(x + s, y + s, z - s);
@@ -228,7 +229,7 @@ void viewer_gl::draw_block(GLfloat x, GLfloat y, GLfloat z, GLfloat s, block_t c
 	glEnd();
 
 	set_color(color.top);
-	glBegin(GL_QUADS);
+	glBegin(type);
 		glVertex3f(x,     y + s, z);
 		glVertex3f(x + s, y + s, z);
 		glVertex3f(x + s, y + s, z - s);
@@ -236,7 +237,7 @@ void viewer_gl::draw_block(GLfloat x, GLfloat y, GLfloat z, GLfloat s, block_t c
 	glEnd();
 
 	set_color(color.bottom);
-	glBegin(GL_QUADS);
+	glBegin(type);
 		glVertex3f(x,     y, z);
 		glVertex3f(x + s, y, z);
 		glVertex3f(x + s, y, z - s);
@@ -244,7 +245,7 @@ void viewer_gl::draw_block(GLfloat x, GLfloat y, GLfloat z, GLfloat s, block_t c
 	glEnd();
 
 	set_color(color.left);
-	glBegin(GL_QUADS);
+	glBegin(type);
 		glVertex3f(x, y,     z);
 		glVertex3f(x, y + s, z);
 		glVertex3f(x, y + s, z - s);
@@ -252,7 +253,7 @@ void viewer_gl::draw_block(GLfloat x, GLfloat y, GLfloat z, GLfloat s, block_t c
 	glEnd();
 
 	set_color(color.right);
-	glBegin(GL_QUADS);
+	glBegin(type);
 		glVertex3f(x + s, y,     z);
 		glVertex3f(x + s, y + s, z);
 		glVertex3f(x + s, y + s, z - s);
@@ -283,29 +284,30 @@ void viewer_gl::draw_cube()
 		}
 	};
 
-	GLfloat size = 0.25f, bias = size * 0.02f;
+	GLfloat size = 0.25f;
 
 	glPushMatrix();
 
 	glRotatef(45.0f, -1.0f, 1.0f, 0.0f);
+	glLineWidth(1.5f);
 
-	GLfloat base = -(size + bias) * 1.5f, x, y, z;
+	GLfloat base = -size * 1.5f, x, y, z;
 	x = y = base, z = -base;
 
-	for(int i = 0; i != 3; ++i, y += size + bias, x = base, z = -base)
+	for(int i = 0; i != 3; ++i, y += size, x = base, z = -base)
 	{
 		rotate_guard _guard(rotate_mask[0], i, rotate_deg, 0, rotate_vec, 0);
-		for(int j = 0; j != 3; ++j, z -= size + bias, x = base)
+		for(int j = 0; j != 3; ++j, z -= size, x = base)
 		{
 			rotate_guard _guard(rotate_mask[1], j, rotate_deg, 0, 0, rotate_vec);
-			for(int k = 0; k != 3; ++k, x += size + bias)
+			for(int k = 0; k != 3; ++k, x += size)
 			{
 				rotate_guard _guard(rotate_mask[2], k, rotate_deg, rotate_vec, 0, 0);
-				draw_block(x, y, z, size, cube.getBlock(i, j, k));
+				draw_block(x, y, z, size, cube.getBlock(i, j, k), GL_QUADS);
+				draw_block(x, y, z, size, { 6, 6, 6, 6, 6, 6 }, GL_LINE_LOOP);
 			}
 		}
 	}
-
 
 	glPopMatrix();
 }
