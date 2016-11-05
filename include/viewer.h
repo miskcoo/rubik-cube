@@ -2,6 +2,7 @@
 #define __VIEWER_H__
 
 #include "cube.h"
+#include <memory>
 
 namespace rubik_cube
 {
@@ -17,8 +18,7 @@ public:
 	virtual void add_rotate(face_t::face_type, int) = 0;
 };
 
-viewer_t *create_opengl_viewer();
-void destroy_opengl_viewer(viewer_t*);
+std::shared_ptr<viewer_t> create_opengl_viewer();
 }
 
 #endif // __VIEWER_H__

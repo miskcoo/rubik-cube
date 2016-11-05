@@ -1,5 +1,6 @@
 #include "viewer.h"
 #include "virtual_rotate.hpp"
+#include <memory>
 #include <chrono>
 #include <queue>
 #include <algorithm>
@@ -367,14 +368,9 @@ void viewer_gl::on_mouse_move(GLFWwindow* window, double x, double y)
 
 } // namespace __viewer_gl_impl
 
-viewer_t* create_opengl_viewer()
+std::shared_ptr<viewer_t> create_opengl_viewer()
 {
-	return new __viewer_gl_impl::viewer_gl;
-}
-
-void destroy_opengl_viewer(viewer_t* viewer)
-{
-	delete viewer;
+	return std::make_shared<__viewer_gl_impl::viewer_gl>();
 }
 
 } // namespace rubik_cube

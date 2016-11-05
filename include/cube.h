@@ -4,6 +4,8 @@
 #ifndef __CUBE_H__
 #define __CUBE_H__
 
+#include <cstdint>
+
 namespace rubik_cube
 {
 
@@ -19,12 +21,24 @@ struct face_t
 		bottom = 5
 	};
 
-	int C[9];
+	int8_t C[9];
 };
 
 struct block_t
 {
-	int top, left, back, right, front, bottom;
+	int8_t top, left, back, right, front, bottom, id;
+};
+
+struct corner_block_t
+{
+	int permutation[8];
+	int8_t top_bottom_color[8];
+};
+
+struct edge_block_t
+{
+	int permutation[12];
+	int8_t color[12];
 };
 
 class cube_t
@@ -33,7 +47,7 @@ public:
 	cube_t();
 	~cube_t();
 public:
-	face_t getFace(face_t::face_type);
+	face_t getFace(face_t::face_type) const;
 
 	/* look from the top face
 	 * *-----------------*
@@ -46,7 +60,10 @@ public:
 	 * middle level = 1
 	 * top level = 2
 	 */
-	block_t getBlock(int level, int x, int y);
+	block_t getBlock(int level, int x, int y) const;
+
+	corner_block_t getCornerBlock() const;
+	edge_block_t getEdgeBlock() const;
 
 	/* rotate a face 90 * count degree clockwise */
 	void rotate(face_t::face_type, int count = 1);
@@ -70,7 +87,15 @@ private:
 	 * The front face is numbered from 9 to 17;
 	 * The color ranges from 0 to 5.
 	 */
-	int _C[54];
+	int8_t _C[54];
+	/* *-------*  *--------*   *--------*
+	 * |0  8  1|  |12 23 13|   | 4 16  5|
+	 * |11 20 9|  |26 21 24|   |19 22 17|
+	 * |3  10 2|  |15 25 14|   | 7 18  6|
+	 * *-------*  *--------*   *--------*
+	 *  bottom      middle        top
+	 */
+	int8_t _B[20];
 };
 }
 

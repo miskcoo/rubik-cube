@@ -20,8 +20,8 @@ namespace rubik_cube
 			vector3d cross(const vector3d& r) const
 			{
 				return { y * r.z - z * r.y,
-					     x * r.z - z * r.x,
-						 y * r.x - x * r.y };
+				         x * r.z - z * r.x,
+				         y * r.x - x * r.y };
 			}
 
 			double norm() const
