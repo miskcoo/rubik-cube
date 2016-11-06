@@ -38,6 +38,8 @@ private:
 		}
 	};
 
+	typedef std::unordered_set<cube_encode_t, cube_encode_hash_t> hash_t;
+
 	template<int, int>
 	static int encode_perm(const int *perm, const int *k);
 	static int encode_corners(const cube_t&);
@@ -50,16 +52,17 @@ private:
 	struct search_info_t
 	{
 		cube_t cb;
-		int h, g, face, depth;
+		int g, face, depth;
 
 		move_seq_t* seq;
-		std::unordered_set<cube_encode_t, cube_encode_hash_t>* M;
+#ifdef DEBUG
+		int64_t* cnt;
+#endif
 	};
 
 	int estimate(const cube_t&) const;
 	bool search(search_info_t) const;
 private:
-	static const cube_encode_t final_state;
 	static const int disallow_faces[6];
 	static const int edges_color_map[2][6];
 	static const int corners_size = 88179840; // 3^7 * 8!
@@ -69,7 +72,6 @@ private:
 	int8_t edges2[edges_size];
 }; // class krof_t
 
-const krof_t::cube_encode_t krof_t::final_state = krof_t::encode_cube({});
 const int krof_t::disallow_faces[6] = { -1, -1, -1, 1, 2, 0 };
 const int krof_t::edges_color_map[][6] = { { 0, 1, 1, 1, 1, 0 }, { 0, 1, 0, 1, 0, 0 } };
 
@@ -85,22 +87,29 @@ move_seq_t krof_t::solve(cube_t cb) const
 {
 	for(int depth = 0; ; ++depth)
 	{
-#ifdef DEBUG
-		std::printf("Solving %d...\n", depth);
-#endif
-		std::unordered_set<cube_encode_t, cube_encode_hash_t> M;
 		move_seq_t seq(depth);
 
 		search_info_t s;
 		s.cb    = cb;
-		s.h     = estimate(cb);
 		s.g     = 0;
-		s.M     = &M;
 		s.seq   = &seq;
 		s.face  = 6;
 		s.depth = depth;
 
+#ifdef DEBUG
+		std::printf("Solving %d...\n", depth);
+		int64_t cnt[100];
+		std::memset(cnt, 0, sizeof(cnt));
+		s.cnt = cnt;
+#endif
+
 		if(search(s)) return *s.seq;
+
+#ifdef DEBUG
+		std::puts("");
+		for(int i = 0; i <= depth; ++i)
+			std::printf("% 3d: % 10ld\n", i, cnt[i]);
+#endif
 	}
 
 	return {};
@@ -109,13 +118,15 @@ move_seq_t krof_t::solve(cube_t cb) const
 bool krof_t::search(search_info_t s) const
 {
 #ifdef DEBUG
-	if(s.M->size() % 10000 == 0)
+	static uint64_t cnt = 0;
+	if(s.g == 0) cnt = 0;
+	++s.cnt[s.g];
+	if(++cnt % 10000 == 0)
 	{
-		std::printf("\r%lu                     ", s.M->size());
+		std::printf("\r% 12ld ", cnt);
 		std::fflush(stdout);
 	}
 #endif
-
 	for(int i = 0; i != 6; ++i)
 	{
 		if(i == s.face || disallow_faces[i] == s.face)
@@ -130,8 +141,7 @@ bool krof_t::search(search_info_t s) const
 			{
 				(*s.seq)[s.g] = move_step_t{face_t::face_type(i), j};
 
-				cube_encode_t state = encode_cube(cube);
-				if(state == final_state)
+				if(h == 0)
 				{
 					for(auto& r : *s.seq)
 						if(r.second == 3)
@@ -140,19 +150,13 @@ bool krof_t::search(search_info_t s) const
 					return true;
 				}
 
-				if(s.M->count(state) == 0)
-				{
-					s.M->insert(state);
+				search_info_t t = s;
+				t.cb   = cube;
+				t.face = i;
+				t.g   += 1;
 
-					search_info_t t = s;
-					t.cb   = cube;
-					t.g   += 1;
-					t.h    = h;
-					t.face = i;
-
-					if(search(t))
-						return true;
-				}
+				if(search(t))
+					return true;
 			}
 		}
 	}
