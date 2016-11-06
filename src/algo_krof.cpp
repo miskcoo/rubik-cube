@@ -26,8 +26,6 @@ public:
 	void save(const char*) const;
 	move_seq_t solve(cube_t) const;
 private:
-	int estimate(const cube_t&) const;
-
 	typedef std::pair<int64_t, int32_t> cube_encode_t;
 
 	struct cube_encode_hash_t
@@ -49,6 +47,19 @@ private:
 
 	void init0(int8_t *buf, int(*encoder)(const cube_t&));
 private:
+	struct search_info_t
+	{
+		cube_t cb;
+		int h, g, face, depth;
+
+		move_seq_t* seq;
+		std::unordered_set<cube_encode_t, cube_encode_hash_t>* M;
+	};
+
+	int estimate(const cube_t&) const;
+	bool search(search_info_t) const;
+private:
+	static const cube_encode_t final_state;
 	static const int disallow_faces[6];
 	static const int edges_color_map[2][6];
 	static const int corners_size = 88179840; // 3^7 * 8!
@@ -56,10 +67,9 @@ private:
 	int8_t corners[corners_size];
 	int8_t edges1[edges_size];
 	int8_t edges2[edges_size];
-
 }; // class krof_t
 
-
+const krof_t::cube_encode_t krof_t::final_state = krof_t::encode_cube({});
 const int krof_t::disallow_faces[6] = { -1, -1, -1, 1, 2, 0 };
 const int krof_t::edges_color_map[][6] = { { 0, 1, 1, 1, 1, 0 }, { 0, 1, 0, 1, 0, 0 } };
 
@@ -73,95 +83,81 @@ krof_t::~krof_t()
 
 move_seq_t krof_t::solve(cube_t cb) const
 {
-	struct krof_search_data_t
-	{
-		uint8_t g, h;
-		int64_t prev;
-	};
-
-	auto encode_move = [](int face, int cnt) -> uint8_t {
-		return face << 4 | cnt;
-	};
-
-	auto decode_move = [](uint8_t move) -> move_step_t {
-		return { face_t::face_type(move >> 4), move & 0xf };
-	};
-
-	cube_encode_t final_state = encode_cube({});
-
 	for(int depth = 0; ; ++depth)
 	{
-//		printf("Solving %d...\n", depth);
-		std::queue<krof_search_data_t> H;
-		std::vector<std::pair<int64_t, uint8_t>> P;
+#ifdef DEBUG
+		std::printf("Solving %d...\n", depth);
+#endif
 		std::unordered_set<cube_encode_t, cube_encode_hash_t> M;
-		H.push( { 0, (uint8_t)estimate(cb), -1 } );
-		P.push_back( { -1, encode_move(6, 0) } );
+		move_seq_t seq(depth);
 
-		std::vector<uint8_t> temp_seq(depth);
+		search_info_t s;
+		s.cb    = cb;
+		s.h     = estimate(cb);
+		s.g     = 0;
+		s.M     = &M;
+		s.seq   = &seq;
+		s.face  = 6;
+		s.depth = depth;
 
-		for(int64_t id = 0; !H.empty(); ++id)
-		{
-			krof_search_data_t s = H.front();
-			int face = P[id].second >> 4;
-
-			// calc current cube state
-			int cnt = 0;
-			for(auto p = P[id]; p.first != -1; p = P[p.first])
-				temp_seq[cnt++] = p.second;
-
-			cube_t cube0 = cb;
-			for(int i = cnt - 1; i >= 0; --i)
-			{
-				move_step_t move = decode_move(temp_seq[i]);
-				cube0.rotate(move.first, move.second);
-			}
-
-			for(int i = 0; i != 6; ++i)
-			{
-				if(i == face || disallow_faces[i] == face)
-					continue;
-
-				cube_t cube = cube0;
-				for(int j = 1; j <= 3; ++j)
-				{
-					cube.rotate(face_t::face_type(i), 1);
-					int h = estimate(cube);
-					if(h + s.g + 1 <= depth)
-					{
-						cube_encode_t state = encode_cube(cube);
-						if(state == final_state)
-						{
-							move_seq_t seq;
-							seq.push_back( { face_t::face_type(i), j } );
-
-							for(auto p = P[id]; p.first != -1; p = P[p.first])
-								seq.push_back(decode_move(p.second));
-
-							for(auto& r : seq)
-								if(r.second == 3)
-									r.second = -1;
-
-							std::reverse(seq.begin(), seq.end());
-
-							return seq;
-						}
-
-						if(M.count(state) == 0)
-						{
-							M.insert(state);
-							H.push( { uint8_t(s.g + 1), uint8_t(h), id } );
-							P.push_back( { id, encode_move(i, j) } );
-						}
-					}
-				}
-			}
-
-			H.pop();
-		}
+		if(search(s)) return *s.seq;
 	}
 
 	return {};
+}
+
+bool krof_t::search(search_info_t s) const
+{
+#ifdef DEBUG
+	if(s.M->size() % 10000 == 0)
+	{
+		std::printf("\r%lu                     ", s.M->size());
+		std::fflush(stdout);
+	}
+#endif
+
+	for(int i = 0; i != 6; ++i)
+	{
+		if(i == s.face || disallow_faces[i] == s.face)
+			continue;
+
+		cube_t cube = s.cb;
+		for(int j = 1; j <= 3; ++j)
+		{
+			cube.rotate(face_t::face_type(i), 1);
+			int h = estimate(cube);
+			if(h + s.g + 1 <= s.depth)
+			{
+				(*s.seq)[s.g] = move_step_t{face_t::face_type(i), j};
+
+				cube_encode_t state = encode_cube(cube);
+				if(state == final_state)
+				{
+					for(auto& r : *s.seq)
+						if(r.second == 3)
+							r.second = -1;
+
+					return true;
+				}
+
+				if(s.M->count(state) == 0)
+				{
+					s.M->insert(state);
+
+					search_info_t t = s;
+					t.cb   = cube;
+					t.g   += 1;
+					t.h    = h;
+					t.face = i;
+
+					if(search(t))
+						return true;
+				}
+			}
+		}
+	}
+
+	return false;
 }
 
 int krof_t::estimate(const cube_t& c) const
