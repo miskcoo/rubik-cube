@@ -38,6 +38,7 @@ private:
 	void init0(int8_t *buf, int(*encoder)(const cube_t&));
 private:
 	static const int disallow_faces[6];
+	static const int edges_color_map[2][6];
 	static const int corners_size = 88179840; // 3^7 * 8!
 	static const int edges_size = 42577920;   // 2^6 * 12! / 6!
 	int8_t corners[corners_size];
@@ -47,6 +48,7 @@ private:
 }; // class krof_t
 
 const int krof_t::disallow_faces[6] = { -1, -1, -1, 1, 2, 0 };
+const int krof_t::edges_color_map[][6] = { { 0, 1, 1, 1, 1, 0 }, { 0, 1, 0, 1, 0, 0 } };
 
 krof_t::krof_t()
 {
@@ -72,15 +74,15 @@ move_seq_t krof_t::solve(cube_t cb) const
 	{
 //		printf("Solving %d...\n", depth);
 		std::queue<krof_search_data_t> H;
-		std::vector<std::pair<int64_t, move_step_t>> P;
+		std::vector<std::tuple<int64_t, int, int>> P;
 		std::set<cube_encode_t> M;
 		H.push( { cb, 0, estimate(cb), -1 } );
-		P.push_back( { -1, { face_t::face_type::top, 0 } } );
+		P.push_back( { -1, 6, 0 } );
 
 		for(int64_t id = 0; !H.empty(); ++id)
 		{
 			krof_search_data_t s = H.front();
-			int face = id ? (int)P[id].first : 6;
+			int face = std::get<1>(P[id]);
 
 			for(int i = 0; i != 6; ++i)
 			{
@@ -100,8 +102,8 @@ move_seq_t krof_t::solve(cube_t cb) const
 							move_seq_t seq;
 							seq.push_back( { face_t::face_type(i), j } );
 
-							for(auto p = P[id]; p.first != -1; p = P[p.first])
-								seq.push_back(p.second);
+							for(auto p = P[id]; std::get<0>(p) != -1; p = P[std::get<0>(p)])
+								seq.push_back( { face_t::face_type(std::get<1>(p)), std::get<2>(p) } );
 
 							for(auto& r : seq)
 								if(r.second == 3)
@@ -116,7 +118,7 @@ move_seq_t krof_t::solve(cube_t cb) const
 						{
 							M.insert(state);
 							H.push( { cube, s.g + 1, h, id } );
-							P.push_back( { id, move_step_t{ face_t::face_type(i), j } } );
+							P.push_back( { id, i, j } );
 						}
 					}
 				}
@@ -225,11 +227,6 @@ int krof_t::encode_perm(const int *p, const int *k)
 int krof_t::encode_edges1(const cube_t& c)
 {
 	static const int k[6] = { 1, 12, 132, 1320, 11880, 95040 };
-	static const int color_map[][6] = 
-	{
-		{ 0, 1, 1, 1, 1, 0 },
-		{ 0, 1, 0, 1, 0, 0 }
-	};
 
 	edge_block_t eb = c.getEdgeBlock();
 
@@ -240,7 +237,7 @@ int krof_t::encode_edges1(const cube_t& c)
 		{
 			t = eb.permutation[i] - 8;
 			perm[t] = i;
-			v |= color_map[t >= 4][eb.color[i]] << t;
+			v |= edges_color_map[t >= 4][eb.color[i]] << t;
 		}
 	}
 
@@ -250,11 +247,6 @@ int krof_t::encode_edges1(const cube_t& c)
 int krof_t::encode_edges2(const cube_t& c)
 {
 	static const int k[6] = { 1, 12, 132, 1320, 11880, 95040 };
-	static const int color_map[][6] = 
-	{
-		{ 0, 1, 1, 1, 1, 0 },
-		{ 0, 1, 0, 1, 0, 0 }
-	};
 
 	edge_block_t eb = c.getEdgeBlock();
 
@@ -265,7 +257,7 @@ int krof_t::encode_edges2(const cube_t& c)
 		{
 			t = eb.permutation[i] - 14;
 			perm[t] = i;
-			v |= color_map[t <= 7][eb.color[i]] << t;
+			v |= edges_color_map[t < 2][eb.color[i]] << t;
 		}
 	}
 
@@ -296,19 +288,13 @@ krof_t::cube_encode_t krof_t::encode_cube(const cube_t& c)
 		239500800, 479001600
 	};
 
-	static const int color_map[][6] = 
-	{
-		{ 0, 1, 1, 1, 1, 0 },
-		{ 0, 1, 0, 1, 0, 0 }
-	};
-
 	edge_block_t eb = c.getEdgeBlock();
 
 	int v = 0;
 	for(int i = 0; i != 12; ++i)
 	{
 		int t = (eb.permutation[i] -= 8);
-		v |= color_map[7 >= t && t >= 4][eb.color[i]] << t;
+		v |= edges_color_map[7 >= t && t >= 4][eb.color[i]] << t;
 	}
 
 	return {
