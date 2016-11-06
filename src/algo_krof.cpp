@@ -7,7 +7,8 @@
 #include <cstring>
 #include <cstdlib>
 #include <algorithm>
-#include <set>
+#include <functional>
+#include <unordered_set>
 
 namespace rubik_cube
 {
@@ -28,6 +29,17 @@ private:
 	int estimate(const cube_t&) const;
 
 	typedef std::pair<int64_t, int32_t> cube_encode_t;
+
+	struct cube_encode_hash_t
+	{
+		std::size_t operator() (const cube_encode_t& c) const
+		{
+			std::size_t h1 = std::hash<uint64_t>{}(c.first);
+			std::size_t h2 = std::hash<uint32_t>{}(c.second);
+			return h1 ^ (h2 << 1);
+		}
+	};
+
 	template<int, int>
 	static int encode_perm(const int *perm, const int *k);
 	static int encode_corners(const cube_t&);
@@ -47,6 +59,7 @@ private:
 
 }; // class krof_t
 
+
 const int krof_t::disallow_faces[6] = { -1, -1, -1, 1, 2, 0 };
 const int krof_t::edges_color_map[][6] = { { 0, 1, 1, 1, 1, 0 }, { 0, 1, 0, 1, 0, 0 } };
 
@@ -62,10 +75,16 @@ move_seq_t krof_t::solve(cube_t cb) const
 {
 	struct krof_search_data_t
 	{
-		cube_t c;
-		int g, h;
-
+		uint8_t g, h;
 		int64_t prev;
+	};
+
+	auto encode_move = [](int face, int cnt) -> uint8_t {
+		return face << 4 | cnt;
+	};
+
+	auto decode_move = [](uint8_t move) -> move_step_t {
+		return { face_t::face_type(move >> 4), move & 0xf };
 	};
 
 	cube_encode_t final_state = encode_cube({});
@@ -74,22 +93,36 @@ move_seq_t krof_t::solve(cube_t cb) const
 	{
 //		printf("Solving %d...\n", depth);
 		std::queue<krof_search_data_t> H;
-		std::vector<std::tuple<int64_t, int, int>> P;
-		std::set<cube_encode_t> M;
-		H.push( { cb, 0, estimate(cb), -1 } );
-		P.push_back( { -1, 6, 0 } );
+		std::vector<std::pair<int64_t, uint8_t>> P;
+		std::unordered_set<cube_encode_t, cube_encode_hash_t> M;
+		H.push( { 0, (uint8_t)estimate(cb), -1 } );
+		P.push_back( { -1, encode_move(6, 0) } );
+
+		std::vector<uint8_t> temp_seq(depth);
 
 		for(int64_t id = 0; !H.empty(); ++id)
 		{
 			krof_search_data_t s = H.front();
-			int face = std::get<1>(P[id]);
+			int face = P[id].second >> 4;
+
+			// calc current cube state
+			int cnt = 0;
+			for(auto p = P[id]; p.first != -1; p = P[p.first])
+				temp_seq[cnt++] = p.second;
+
+			cube_t cube0 = cb;
+			for(int i = cnt - 1; i >= 0; --i)
+			{
+				move_step_t move = decode_move(temp_seq[i]);
+				cube0.rotate(move.first, move.second);
+			}
 
 			for(int i = 0; i != 6; ++i)
 			{
 				if(i == face || disallow_faces[i] == face)
 					continue;
 
-				cube_t cube = s.c;
+				cube_t cube = cube0;
 				for(int j = 1; j <= 3; ++j)
 				{
 					cube.rotate(face_t::face_type(i), 1);
@@ -102,8 +135,8 @@ move_seq_t krof_t::solve(cube_t cb) const
 							move_seq_t seq;
 							seq.push_back( { face_t::face_type(i), j } );
 
-							for(auto p = P[id]; std::get<0>(p) != -1; p = P[std::get<0>(p)])
-								seq.push_back( { face_t::face_type(std::get<1>(p)), std::get<2>(p) } );
+							for(auto p = P[id]; p.first != -1; p = P[p.first])
+								seq.push_back(decode_move(p.second));
 
 							for(auto& r : seq)
 								if(r.second == 3)
@@ -117,8 +150,8 @@ move_seq_t krof_t::solve(cube_t cb) const
 						if(M.count(state) == 0)
 						{
 							M.insert(state);
-							H.push( { cube, s.g + 1, h, id } );
-							P.push_back( { id, i, j } );
+							H.push( { uint8_t(s.g + 1), uint8_t(h), id } );
+							P.push_back( { id, encode_move(i, j) } );
 						}
 					}
 				}
