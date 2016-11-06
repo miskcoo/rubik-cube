@@ -10,6 +10,12 @@
 #include <functional>
 #include <unordered_set>
 
+#include <thread>
+#include <future>
+#include <atomic>
+#include <mutex>
+#include <condition_variable>
+
 namespace rubik_cube
 {
 
@@ -19,33 +25,18 @@ namespace __krof_algo_impl
 class krof_t : public algo_t
 {
 public:
-	krof_t();
+	krof_t(int thread_num);
 	~krof_t();
 public:
 	void init(const char*);
 	void save(const char*) const;
 	move_seq_t solve(cube_t) const;
 private:
-	typedef std::pair<int64_t, int32_t> cube_encode_t;
-
-	struct cube_encode_hash_t
-	{
-		std::size_t operator() (const cube_encode_t& c) const
-		{
-			std::size_t h1 = std::hash<uint64_t>{}(c.first);
-			std::size_t h2 = std::hash<uint32_t>{}(c.second);
-			return h1 ^ (h2 << 1);
-		}
-	};
-
-	typedef std::unordered_set<cube_encode_t, cube_encode_hash_t> hash_t;
-
 	template<int, int>
 	static int encode_perm(const int *perm, const int *k);
 	static int encode_corners(const cube_t&);
 	static int encode_edges1(const cube_t&);
 	static int encode_edges2(const cube_t&);
-	static cube_encode_t encode_cube(const cube_t&);
 
 	void init0(int8_t *buf, int(*encoder)(const cube_t&));
 private:
@@ -55,13 +46,14 @@ private:
 		int g, face, depth;
 
 		move_seq_t* seq;
-#ifdef DEBUG
-		int64_t* cnt;
-#endif
+
+		int tid;
+		std::atomic<int>* result_id;
 	};
 
 	int estimate(const cube_t&) const;
 	bool search(search_info_t) const;
+	bool search_multi_thread(search_info_t) const;
 private:
 	static const int disallow_faces[6];
 	static const int edges_color_map[2][6];
@@ -70,13 +62,15 @@ private:
 	int8_t corners[corners_size];
 	int8_t edges1[edges_size];
 	int8_t edges2[edges_size];
+	int thread_num;
 }; // class krof_t
 
 const int krof_t::disallow_faces[6] = { -1, -1, -1, 1, 2, 0 };
 const int krof_t::edges_color_map[][6] = { { 0, 1, 1, 1, 1, 0 }, { 0, 1, 0, 1, 0, 0 } };
 
-krof_t::krof_t()
+krof_t::krof_t(int thread_num)
 {
+	this->thread_num = thread_num;
 }
 
 krof_t::~krof_t()
@@ -96,20 +90,15 @@ move_seq_t krof_t::solve(cube_t cb) const
 		s.face  = 6;
 		s.depth = depth;
 
-#ifdef DEBUG
-		std::printf("Solving %d...\n", depth);
-		int64_t cnt[100];
-		std::memset(cnt, 0, sizeof(cnt));
-		s.cnt = cnt;
-#endif
-
-		if(search(s)) return *s.seq;
-
-#ifdef DEBUG
-		std::puts("");
-		for(int i = 0; i <= depth; ++i)
-			std::printf("% 3d: % 10ld\n", i, cnt[i]);
-#endif
+		if(depth < 11 || thread_num == 1) 
+		{
+			s.tid = -1;
+			if(search(s)) 
+				return *s.seq;
+		} else {
+			if(search_multi_thread(s))
+				return *s.seq;
+		}
 	}
 
 	return {};
@@ -119,14 +108,16 @@ bool krof_t::search(search_info_t s) const
 {
 #ifdef DEBUG
 	static uint64_t cnt = 0;
-	if(s.g == 0) cnt = 0;
-	++s.cnt[s.g];
 	if(++cnt % 10000 == 0)
 	{
-		std::printf("\r% 12ld ", cnt);
+		std::printf("\rdepth = % 3d, node = % 12ld ", s.depth, cnt);
 		std::fflush(stdout);
 	}
 #endif
+
+	if(s.tid >= 0 && *s.result_id >= 0)
+		return true;
+
 	for(int i = 0; i != 6; ++i)
 	{
 		if(i == s.face || disallow_faces[i] == s.face)
@@ -147,6 +138,9 @@ bool krof_t::search(search_info_t s) const
 						if(r.second == 3)
 							r.second = -1;
 
+					if(s.tid >= 0)
+						*s.result_id = s.tid;
+
 					return true;
 				}
 
@@ -162,6 +156,80 @@ bool krof_t::search(search_info_t s) const
 	}
 
 	return false;
+}
+
+bool krof_t::search_multi_thread(search_info_t s) const
+{
+	search_info_t infos[18];
+	move_seq_t seqs[18];
+
+	std::mutex cv_m;
+	std::condition_variable cv;
+	int working_thread = 0;
+
+	std::future<bool> results[18];
+	std::atomic<int> result_id;
+	result_id = -1;
+
+	for(int i = 0; i != 6; ++i)
+	{
+		cube_t cube = s.cb;
+		for(int j = 1; j <= 3; ++j)
+		{
+			int id = i * 3 + j - 1;
+			cube.rotate(face_t::face_type(i), 1);
+
+			seqs[id].resize(s.depth);
+			seqs[id][0] = move_step_t{face_t::face_type(i), j};
+
+			infos[id]           = s;
+			infos[id].tid       = id;
+			infos[id].cb        = cube;
+			infos[id].seq       = seqs + id;
+			infos[id].g         = 1;
+			infos[id].face      = i;
+			infos[id].result_id = &result_id;
+
+			std::packaged_task<bool()> task {
+				[&, id] () -> bool {
+
+					std::unique_lock<std::mutex> lk(cv_m);
+					cv.wait(lk, [&] { 
+						return working_thread < this->thread_num; 
+					} );
+
+					++working_thread;
+					lk.unlock();
+
+					bool ret = this->search(infos[id]);
+
+					{
+						std::lock_guard<std::mutex> lk(cv_m);
+						--working_thread;
+					}
+
+					cv.notify_one();
+
+					return ret;
+				}
+			};
+
+			results[id] = task.get_future();
+
+			std::thread{ std::move(task) }.detach();
+		}
+	}
+
+	cv.notify_all();
+
+	for(auto& fu : results)
+		fu.wait();
+
+	if(result_id >= 0)
+	{
+		*s.seq = seqs[result_id];
+		return true;
+	} else return false;
 }
 
 int krof_t::estimate(const cube_t& c) const
@@ -311,37 +379,11 @@ int krof_t::encode_corners(const cube_t& c)
 	return v + encode_perm<8, 7>(cb.permutation, k) * base0;
 }
 
-krof_t::cube_encode_t krof_t::encode_cube(const cube_t& c)
-{
-	static const int k[12] = 
-	{ 
-		1, 12, 132, 1320, 11880, 
-		95040, 665280, 3991680, 
-		19958400, 79833600, 
-		239500800, 479001600
-	};
-
-	edge_block_t eb = c.getEdgeBlock();
-
-	int v = 0;
-	for(int i = 0; i != 12; ++i)
-	{
-		int t = (eb.permutation[i] -= 8);
-		v |= edges_color_map[7 >= t && t >= 4][eb.color[i]] << t;
-	}
-
-	return {
-		v + ((long long)encode_perm<12, 11>(eb.permutation, k) << 12),
-		encode_corners(c)
-	};
-
-}
-
 } // namespace __krof_algo_impl
 
-std::shared_ptr<algo_t> create_krof_algo()
+std::shared_ptr<algo_t> create_krof_algo(int thread_num)
 {
-	return std::make_shared<__krof_algo_impl::krof_t>();
+	return std::make_shared<__krof_algo_impl::krof_t>(thread_num);
 }
 
 } // namespace rubik_cube

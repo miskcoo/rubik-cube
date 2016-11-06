@@ -19,7 +19,7 @@ namespace rubik_cube
 		virtual move_seq_t solve(cube_t) const = 0;
 	};
 
-	std::shared_ptr<algo_t> create_krof_algo();
+	std::shared_ptr<algo_t> create_krof_algo(int thread_num = 4);
 }
 
 #endif // __ALGO_H__
