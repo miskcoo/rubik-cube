@@ -1,14 +1,11 @@
 #include "algo.h"
 #include "cube.h"
-#include <tuple>
 #include <queue>
 #include <fstream>
 #include <cstdint>
 #include <cstring>
 #include <cstdlib>
 #include <algorithm>
-#include <functional>
-#include <unordered_set>
 
 #include <thread>
 #include <future>
@@ -52,8 +49,9 @@ private:
 	};
 
 	int estimate(const cube_t&) const;
-	bool search(search_info_t) const;
-	bool search_multi_thread(search_info_t) const;
+	int estimate_edges(const cube_t&) const;
+	bool search(const search_info_t&) const;
+	bool search_multi_thread(const search_info_t&) const;
 private:
 	static const int disallow_faces[6];
 	static const int edges_color_map[2][6];
@@ -104,7 +102,7 @@ move_seq_t krof_t::solve(cube_t cb) const
 	return {};
 }
 
-bool krof_t::search(search_info_t s) const
+bool krof_t::search(const search_info_t& s) const
 {
 #ifdef DEBUG
 	static uint64_t cnt = 0;
@@ -117,6 +115,9 @@ bool krof_t::search(search_info_t s) const
 
 	if(s.tid >= 0 && *s.result_id >= 0)
 		return true;
+
+	search_info_t t = s;
+	t.g += 1;
 
 	for(int i = 0; i != 6; ++i)
 	{
@@ -144,10 +145,8 @@ bool krof_t::search(search_info_t s) const
 					return true;
 				}
 
-				search_info_t t = s;
 				t.cb   = cube;
 				t.face = i;
-				t.g   += 1;
 
 				if(search(t))
 					return true;
@@ -158,7 +157,7 @@ bool krof_t::search(search_info_t s) const
 	return false;
 }
 
-bool krof_t::search_multi_thread(search_info_t s) const
+bool krof_t::search_multi_thread(const search_info_t& s) const
 {
 	search_info_t infos[18];
 	move_seq_t seqs[18];
@@ -234,12 +233,9 @@ bool krof_t::search_multi_thread(search_info_t s) const
 
 int krof_t::estimate(const cube_t& c) const
 {
-	return std::max(
+	return std::max<int>(
 		corners[encode_corners(c)],
-		std::max(
-			edges1[encode_edges1(c)],
-			edges2[encode_edges2(c)]
-		)
+		estimate_edges(c)
 	);
 }
 
@@ -323,6 +319,35 @@ int krof_t::encode_perm(const int *p, const int *k)
 	}
 
 	return v;
+}
+
+int krof_t::estimate_edges(const cube_t& c) const
+{
+	static const int k[6] = { 1, 12, 132, 1320, 11880, 95040 };
+
+	edge_block_t eb = c.getEdgeBlock();
+
+	int t;
+	int v1 = 0, perm1[6];
+	int v2 = 0, perm2[6];
+	for(int i = 0; i != 12; ++i)
+	{
+		if(eb.permutation[i] < 14)
+		{
+			t = eb.permutation[i] - 8;
+			perm1[t] = i;
+			v1 |= edges_color_map[t >= 4][eb.color[i]] << t;
+		} else {
+			t = eb.permutation[i] - 14;
+			perm2[t] = i;
+			v2 |= edges_color_map[t < 2][eb.color[i]] << t;
+		}
+	}
+
+	return std::max(
+		edges1[v1 + (encode_perm<12, 6>(perm1, k) << 6)],
+		edges2[v2 + (encode_perm<12, 6>(perm2, k) << 6)]
+	);
 }
 
 int krof_t::encode_edges1(const cube_t& c)
