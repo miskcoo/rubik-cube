@@ -52,7 +52,7 @@ class viewer_gl : public viewer_t
 {
 public:
 	viewer_gl();
-	~viewer_gl();
+	~viewer_gl() = default;
 public:
 	void run();
 	bool init(int&, char**&);
@@ -89,10 +89,6 @@ viewer_gl::viewer_gl()
 	rotate_duration = 1;
 	rotate_deg = rotate_vec = 0;
 	std::fill(rotate_mask, rotate_mask + 3, -1);
-}
-
-viewer_gl::~viewer_gl()
-{
 }
 
 bool viewer_gl::init(int&, char**&)
@@ -204,11 +200,11 @@ void viewer_gl::set_color(int type)
 {
 	static const GLfloat colors[7][3] = 
 		{ { 0.0f, 1.0f, 0.0f }, // top    (green)
-		  { 1.0f, 0.3f, 0.3f }, // front  (red)
-		  { 1.0f, 1.0f, 0.0f }, // left   (yellow)
-		  { 1.0f, 0.5f, 0.0f }, // back   (orange)
-		  { 1.0f, 1.0f, 1.0f }, // right  (white)
 		  { 0.3f, 0.3f, 1.0f }, // bottom (blue)
+		  { 1.0f, 0.3f, 0.3f }, // front  (red)
+		  { 1.0f, 0.5f, 0.0f }, // back   (orange)
+		  { 1.0f, 1.0f, 0.0f }, // left   (yellow)
+		  { 1.0f, 1.0f, 1.0f }, // right  (white)
 		  { 0.0f, 0.0f, 0.0f }  // frame
 		};
 

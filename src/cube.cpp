@@ -1,173 +1,188 @@
 #include "cube.h"
+#include <cstring>
 
 namespace rubik_cube
 {
 
 cube_t::cube_t()
 {
-	for(int i = 0; i != 6; ++i)
-	{
-		int fid = i * 9;
-		for(int j = 0; j != 9; ++j)
-			_C[fid + j] = i;
-	}
-
-	for(int i = 0; i != 20; ++i)
-		_B[i] = i;
-}
-
-cube_t::~cube_t()
-{
+	std::memset(co, 0, sizeof(co));
+	std::memset(eo, 0, sizeof(eo));
+	for(int i = 0; i != 8; ++i)
+		cp[i] = i;
+	for(int i = 0; i != 12; ++i)
+		ep[i] = i;
 }
 
 void cube_t::rotate(face_t::face_type type, int count)
 {
-	static const int permutation[][12] = 
+	static const int corner_rotate_map[2][6][4] = 
 	{
-		{ 39, 38, 37, 12, 11, 10, 21, 20, 19, 30, 29, 28 }, // top
-		{  7,  6,  5, 37, 44, 43, 52, 51, 50, 23, 22, 21 }, // front
-		{  1,  8,  7, 10, 17, 16, 50, 49, 48, 32, 31, 30 }, // left
-		{  3,  2,  1, 19, 26, 25, 48, 47, 46, 41, 40, 39 }, // back
-		{  5,  4,  3, 28, 35, 34, 46, 53, 52, 14, 13, 12 }, // right
-		{ 43, 42, 41, 34, 33, 32, 25, 24, 23, 16, 15, 14 }  // bottom
+		{
+			// clockwise
+			{ 4, 5, 6, 7 }, // top
+			{ 3, 2, 1, 0 }, // bottom
+			{ 7, 6, 2, 3 }, // front
+			{ 5, 4, 0, 1 }, // back
+			{ 4, 7, 3, 0 }, // left
+			{ 6, 5, 1, 2 }  // right
+		}, {
+			// counterclockwise
+			{ 7, 6, 5, 4 }, // top
+			{ 0, 1, 2, 3 }, // bottom
+			{ 7, 3, 2, 6 }, // front
+			{ 5, 1, 0, 4 }, // back
+			{ 4, 0, 3, 7 }, // left
+			{ 6, 2, 1, 5 }  // right
+		}
 	};
 
-	static const int permutation_block[][8] = 
+	static const int edge_rotate_map[2][6][4] = 
 	{
-		{  4, 16,  5, 17,  6, 18,  7, 19 }, // top
-		{  7, 18,  6, 14,  2, 10,  3, 15 }, // front
-		{  4, 19,  7, 15,  3, 11,  0, 12 }, // left
-		{  4, 12,  0,  8,  1, 13,  5, 16 }, // back
-		{  5, 13,  1,  9,  2, 14,  6, 17 }, // right
-		{  0, 11,  3, 10,  2,  9,  1,  8 }  // bottom
+		{
+			// clockwise
+			{ 4, 5, 6, 7 },   // top
+			{ 11, 10, 9, 8 }, // bottom
+			{ 6, 2, 10, 3 },  // front
+			{ 4, 0, 8, 1 },   // back
+			{ 7, 3, 11, 0 },  // left
+			{ 5, 1, 9, 2 }    // right
+		}, {
+			// counterclockwise
+			{ 7, 6, 5, 4 },   // top
+			{ 8, 9, 10, 11 }, // bottom
+			{ 3, 10, 2, 6 },  // front
+			{ 1, 8, 0, 4 },   // back
+			{ 0, 11, 3, 7 },  // left
+			{ 2, 9, 1, 5 }    // right
+		}
 	};
 
-	const int* P = permutation[type], *PB = permutation_block[type];
+	static const auto swap = [](int8_t *A, const int *C) {
+		int tmp = A[C[3]];
+		A[C[3]] = A[C[2]];
+		A[C[2]] = A[C[1]];
+		A[C[1]] = A[C[0]];
+		A[C[0]] = tmp;
+	};
 
-	int fid = type * 9;
-	count = (count % 4 + 4) % 4;
+	static const auto swap2 = [](int8_t &a, int8_t &b) {
+		int8_t t = a;
+		a = b;
+		b = t;
+	};
 
-	while(count --> 0)
+	count = (count % 4 + 4) & 3;
+
+	if(count == 2)
 	{
-		int T[3] = { _C[P[9]], _C[P[10]], _C[P[11]] };
+		const int *C = corner_rotate_map[0][int(type)];
 
-		for(int i = 11; i >= 3; --i)
-			_C[P[i]] = _C[P[i - 3]];
+		swap2(cp[C[0]], cp[C[2]]);
+		swap2(cp[C[1]], cp[C[3]]);
+		swap2(co[C[0]], co[C[2]]);
+		swap2(co[C[1]], co[C[3]]);
 
-		_C[P[0]] = T[0];
-		_C[P[1]] = T[1];
-		_C[P[2]] = T[2];
+		const int *E = edge_rotate_map[0][int(type)];
+		swap2(ep[E[0]], ep[E[2]]);
+		swap2(ep[E[1]], ep[E[3]]);
+		swap2(eo[E[0]], eo[E[2]]);
+		swap2(eo[E[1]], eo[E[3]]);
+	} else {
+		// rotate the corners
+		const int *C = corner_rotate_map[count >> 1][int(type)];
+		swap(cp, C); swap(co, C);
 
-		int T2[2] = { _C[fid + 7], _C[fid + 8] };
-		for(int i = 8; i >= 3; --i)
-			_C[fid + i] = _C[fid + i - 2];
-		_C[fid + 1] = T2[0];
-		_C[fid + 2] = T2[1];
+		// rotation of top and bottom face does not change the orientation
+		if(int(type) >= 2) 
+		{
+			if(++co[C[0]] == 3) co[C[0]] = 0;
+			if(++co[C[2]] == 3) co[C[2]] = 0;
+			if(--co[C[1]] == -1) co[C[1]] = 2;
+			if(--co[C[3]] == -1) co[C[3]] = 2;
+		}
 
-		// rotate corners
-		int T3 = _B[PB[6]];
-		_B[PB[6]] = _B[PB[4]];
-		_B[PB[4]] = _B[PB[2]];
-		_B[PB[2]] = _B[PB[0]];
-		_B[PB[0]] = T3;
+		// rotate the edges
+		const int *E = edge_rotate_map[count >> 1][int(type)];
+		if(int(type) >= 4)
+		{
+			eo[E[0]] ^= 1;
+			eo[E[1]] ^= 1;
+			eo[E[2]] ^= 1;
+			eo[E[3]] ^= 1;
+		}
 
-		// rotate edges
-		T3 = _B[PB[7]];
-		_B[PB[7]] = _B[PB[5]];
-		_B[PB[5]] = _B[PB[3]];
-		_B[PB[3]] = _B[PB[1]];
-		_B[PB[1]] = T3;
+		swap(ep, E); swap(eo, E);
 	}
-}
-
-face_t cube_t::getFace(face_t::face_type type) const
-{
-	static const int map[9] = { 1, 2, 3,
-	                            8, 0, 4,
-	                            7, 6, 5 };
-
-	int fid = type * 9;
-	face_t F;
-	for(int i = 0; i != 9; ++i)
-		F.C[i] = _C[fid + map[i]];
-	return F;
 }
 
 block_t cube_t::getBlock(int level, int x, int y) const
 {
-	// { top, left, back, right, front, bottom }
-	static const int map[27][7] = 
-		  // level 0 (bottom)
-		{ { -1, 25, 32, -1, -1, 48,  0 }, // (0, 0, 0)
-		  { -1, -1, 33, -1, -1, 47,  8 }, // (0, 0, 1)
-		  { -1, -1, 34, 41, -1, 46,  1 }, // (0, 0, 2)
-		  { -1, 24, -1, -1, -1, 49, 11 }, // (0, 1, 0)
-		  { -1, -1, -1, -1, -1, 45, 20 }, // (0, 1, 1)
-		  { -1, -1, -1, 42, -1, 53,  9 }, // (0, 1, 2)
-		  { -1, 23, -1, -1, 16, 50,  3 }, // (0, 2, 0)
-		  { -1, -1, -1, -1, 15, 51, 10 }, // (0, 2, 1)
-		  { -1, -1, -1, 43, 14, 52,  2 }, // (0, 2, 2)
-
-		  // level 1 (middle)
-		  { -1, 26, 31, -1, -1, -1, 12 }, // (1, 0, 0)
-		  { -1, -1, 27, -1, -1, -1, 23 }, // (1, 0, 1)
-		  { -1, -1, 35, 40, -1, -1, 13 }, // (1, 0, 2)
-		  { -1, 18, -1, -1, -1, -1, 26 }, // (1, 1, 0)
-		  { -1, -1, -1, -1, -1, -1, 21 }, // (1, 1, 1)
-		  { -1, -1, -1, 36, -1, -1, 24 }, // (1, 1, 2)
-		  { -1, 22, -1, -1, 17, -1, 15 }, // (1, 2, 0)
-		  { -1, -1, -1, -1,  9, -1, 25 }, // (1, 2, 1)
-		  { -1, -1, -1, 44, 13, -1, 14 }, // (1, 2, 2)
-
-		  // level 2 (top)
-		  {  1, 19, 30, -1, -1, -1,  4 }, // (2, 0, 0)
-		  {  2, -1, 29, -1, -1, -1, 16 }, // (2, 0, 1)
-		  {  3, -1, 28, 39, -1, -1,  5 }, // (2, 0, 2)
-		  {  8, 20, -1, -1, -1, -1, 19 }, // (2, 1, 0)
-		  {  0, -1, -1, -1, -1, -1, 22 }, // (2, 1, 1)
-		  {  4, -1, -1, 38, -1, -1, 17 }, // (2, 1, 2)
-		  {  7, 21, -1, -1, 10, -1,  7 }, // (2, 2, 0)
-		  {  6, -1, -1, -1, 11, -1, 18 }, // (2, 2, 1)
-		  {  5, -1, -1, 37, 12, -1,  6 }  // (2, 2, 2)
-		};
-
-	const int *M = map[level * 9 + x * 3 + y];
-	block_t B;
-
-	B.id     = _B[M[6]];
-	B.top    = M[0] == -1 ? -1 : _C[M[0]];
-	B.left   = M[1] == -1 ? -1 : _C[M[1]];
-	B.back   = M[2] == -1 ? -1 : _C[M[2]];
-	B.right  = M[3] == -1 ? -1 : _C[M[3]];
-	B.front  = M[4] == -1 ? -1 : _C[M[4]];
-	B.bottom = M[5] == -1 ? -1 : _C[M[5]];
-
-	return B;
-}
-
-corner_block_t cube_t::getCornerBlock() const
-{
-	static const int map[] = { 48, 46, 52, 50, 1, 3, 5, 7 };
-	corner_block_t cb;
-	for(int i = 0; i != 8; ++i)
+	static const int corner_orient_map[][3] = 
 	{
-		cb.permutation[i] = _B[i];
-		cb.top_bottom_color[i] = _C[map[i]];
+		{ 1, 3, 4 }, // (0, 0, 0)
+		{ 1, 5, 3 }, // (0, 0, 2)
+		{ 1, 2, 5 }, // (0, 2, 2)
+		{ 1, 4, 2 }, // (0, 2, 0)
+		{ 0, 4, 3 }, // (2, 0, 0)
+		{ 0, 3, 5 }, // (2, 0, 2)
+		{ 0, 5, 2 }, // (2, 2, 2)
+		{ 0, 2, 4 }  // (2, 2, 0)
+	};
+
+	static const int edge_orient_map[][2] = 
+	{
+		{ 4, 3 }, { 5, 3 }, { 5, 2 }, { 4, 2 },
+		{ 0, 3 }, { 0, 5 }, { 0, 2 }, { 0, 4 },
+		{ 1, 3 }, { 1, 5 }, { 1, 2 }, { 1, 4 },
+	}; 
+
+	static const int edge_id_map[27] = 
+	{
+		-1, 8, -1, 11, -1, 9, -1, 10, -1,
+		0, -1, 1, -1, -1, -1, 3, -1, 2,
+		-1, 4, -1, 7, -1, 5, -1, 6, -1
+	};
+
+	static const int center_id_map[27] = 
+	{
+		-1, -1, -1, -1, 1, -1, -1, -1, -1,
+		-1, 3, -1, 4, -1, 5, -1, 2, -1,
+		-1, -1, -1, -1, 0, -1, -1, -1, -1,
+	};
+
+	int nid = level * 9 + x * 3 + y;
+	int8_t F[6] = { -1, -1, -1, -1, -1, -1 };
+
+	if(level != 1 && x != 1 && y != 1)
+	{
+		int id = (level << 1) | x | ((x ^ y) >> 1);
+		const int *O = corner_orient_map[id];
+		const int *C = corner_orient_map[cp[id]];
+		F[O[0]] = C[co[id]];
+		F[O[1]] = C[(1 + co[id]) % 3];
+		F[O[2]] = C[(2 + co[id]) % 3];
+	} else if(edge_id_map[nid] != -1) {
+		int id = edge_id_map[nid];
+		const int *O = edge_orient_map[id];
+		const int *C = edge_orient_map[ep[id]];
+		F[O[0]] = C[eo[id]];
+		F[O[1]] = C[eo[id] ^ 1];
+	} else if(level != 1 || x != 1 || y != 1) {
+		F[center_id_map[nid]] = center_id_map[nid];
 	}
 
-	return cb;
+	return { F[0], F[1], F[2], F[3], F[4], F[5] };
 }
 
-edge_block_t cube_t::getEdgeBlock() const
+block_info_t cube_t::getCornerBlock() const
 {
-	static const int map[] = { 47, 53, 51, 49, 31, 35, 13, 17, 2, 4, 6, 8 };
-	edge_block_t eb;
-	for(int i = 0; i != 12; ++i)
-	{
-		eb.permutation[i] = _B[i + 8];
-		eb.color[i] = _C[map[i]];
-	}
-	return eb;
+	return { cp, co };
+}
+
+block_info_t cube_t::getEdgeBlock() const
+{
+	return { ep, eo };
 }
 
 }

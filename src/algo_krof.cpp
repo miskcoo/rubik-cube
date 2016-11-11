@@ -23,14 +23,14 @@ class krof_t : public algo_t
 {
 public:
 	krof_t(int thread_num);
-	~krof_t();
+	~krof_t() = default;
 public:
 	void init(const char*);
 	void save(const char*) const;
 	move_seq_t solve(cube_t) const;
 private:
 	template<int, int>
-	static int encode_perm(const int *perm, const int *k);
+	static int encode_perm(const int8_t *perm, const int *k);
 	static int encode_corners(const cube_t&);
 	static int encode_edges1(const cube_t&);
 	static int encode_edges2(const cube_t&);
@@ -54,7 +54,6 @@ private:
 	bool search_multi_thread(const search_info_t&) const;
 private:
 	static const int disallow_faces[6];
-	static const int edges_color_map[2][6];
 	static const int corners_size = 88179840; // 3^7 * 8!
 	static const int edges_size = 42577920;   // 2^6 * 12! / 6!
 	int8_t corners[corners_size];
@@ -64,15 +63,10 @@ private:
 }; // class krof_t
 
 const int krof_t::disallow_faces[6] = { -1, -1, -1, 1, 2, 0 };
-const int krof_t::edges_color_map[][6] = { { 0, 1, 1, 1, 1, 0 }, { 0, 1, 0, 1, 0, 0 } };
 
 krof_t::krof_t(int thread_num)
 {
 	this->thread_num = thread_num;
-}
-
-krof_t::~krof_t()
-{
 }
 
 move_seq_t krof_t::solve(cube_t cb) const
@@ -302,7 +296,7 @@ void krof_t::init0(int8_t *buf, int(*encoder)(const cube_t&))
 }
 
 template<int N, int S>
-int krof_t::encode_perm(const int *p, const int *k) 
+int krof_t::encode_perm(const int8_t *p, const int *k) 
 {
 	int pos[N], elem[N];
 
@@ -325,22 +319,22 @@ int krof_t::estimate_edges(const cube_t& c) const
 {
 	static const int k[6] = { 1, 12, 132, 1320, 11880, 95040 };
 
-	edge_block_t eb = c.getEdgeBlock();
+	block_info_t eb = c.getEdgeBlock();
 
 	int t;
-	int v1 = 0, perm1[6];
-	int v2 = 0, perm2[6];
+	int v1 = 0, v2 = 0;
+	int8_t perm1[6], perm2[6];
 	for(int i = 0; i != 12; ++i)
 	{
-		if(eb.permutation[i] < 14)
+		if(eb.first[i] < 6)
 		{
-			t = eb.permutation[i] - 8;
+			t = eb.first[i];
 			perm1[t] = i;
-			v1 |= edges_color_map[t >= 4][eb.color[i]] << t;
+			v1 |= eb.second[i] << t;
 		} else {
-			t = eb.permutation[i] - 14;
+			t = eb.first[i] - 6;
 			perm2[t] = i;
-			v2 |= edges_color_map[t < 2][eb.color[i]] << t;
+			v2 |= eb.second[i] << t;
 		}
 	}
 
@@ -354,16 +348,17 @@ int krof_t::encode_edges1(const cube_t& c)
 {
 	static const int k[6] = { 1, 12, 132, 1320, 11880, 95040 };
 
-	edge_block_t eb = c.getEdgeBlock();
+	block_info_t eb = c.getEdgeBlock();
 
-	int t, v = 0, perm[6];
+	int t, v = 0;
+	int8_t perm[6];
 	for(int i = 0; i != 12; ++i)
 	{
-		if(eb.permutation[i] < 14)
+		if(eb.first[i] < 6)
 		{
-			t = eb.permutation[i] - 8;
+			t = eb.first[i];
 			perm[t] = i;
-			v |= edges_color_map[t >= 4][eb.color[i]] << t;
+			v |= eb.second[i] << t;
 		}
 	}
 
@@ -374,16 +369,17 @@ int krof_t::encode_edges2(const cube_t& c)
 {
 	static const int k[6] = { 1, 12, 132, 1320, 11880, 95040 };
 
-	edge_block_t eb = c.getEdgeBlock();
+	block_info_t eb = c.getEdgeBlock();
 
-	int t, v = 0, perm[6];
+	int t, v = 0;
+	int8_t perm[6];
 	for(int i = 0; i != 12; ++i)
 	{
-		if(eb.permutation[i] >= 14)
+		if(eb.first[i] >= 6)
 		{
-			t = eb.permutation[i] - 14;
+			t = eb.first[i] - 6;
 			perm[t] = i;
-			v |= edges_color_map[t < 2][eb.color[i]] << t;
+			v |= eb.second[i] << t;
 		}
 	}
 
@@ -393,15 +389,14 @@ int krof_t::encode_edges2(const cube_t& c)
 int krof_t::encode_corners(const cube_t& c) 
 {
 	static const int base0 = 2187; // 3^7
-	static const int color_map[6] = { 0, 1, 2, 1, 2, 0 };
 	static const int k[7] = { 1, 8, 56, 336, 1680, 6720, 20160 };
 
-	corner_block_t cb = c.getCornerBlock();
+	block_info_t cb = c.getCornerBlock();
 	int v = 0;
 	for(int i = 0; i != 7; ++i)
-		v = v * 3 + color_map[cb.top_bottom_color[i]];
+		v = v * 3 + cb.second[i];
 
-	return v + encode_perm<8, 7>(cb.permutation, k) * base0;
+	return v + encode_perm<8, 7>(cb.first, k) * base0;
 }
 
 } // namespace __krof_algo_impl
