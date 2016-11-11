@@ -62,7 +62,7 @@ private:
 	int thread_num;
 }; // class krof_t
 
-const int krof_t::disallow_faces[6] = { -1, -1, -1, 1, 2, 0 };
+const int krof_t::disallow_faces[6] = { -1, 0, -1, 2, -1, 4 };
 
 krof_t::krof_t(int thread_num)
 {
