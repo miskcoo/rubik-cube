@@ -1,6 +1,6 @@
 #include "algo.h"
 #include "cube.h"
-#include <queue>
+#include "search.hpp"
 #include <fstream>
 #include <cstdint>
 #include <cstring>
@@ -29,13 +29,9 @@ public:
 	void save(const char*) const;
 	move_seq_t solve(cube_t) const;
 private:
-	template<int, int>
-	static int encode_perm(const int8_t *perm, const int *k);
 	static int encode_corners(const cube_t&);
 	static int encode_edges1(const cube_t&);
 	static int encode_edges2(const cube_t&);
-
-	void init0(int8_t *buf, int(*encoder)(const cube_t&));
 private:
 	struct search_info_t
 	{
@@ -53,7 +49,6 @@ private:
 	bool search(const search_info_t&) const;
 	bool search_multi_thread(const search_info_t&) const;
 private:
-	static const int disallow_faces[6];
 	static const int corners_size = 88179840; // 3^7 * 8!
 	static const int edges_size = 42577920;   // 2^6 * 12! / 6!
 	int8_t corners[corners_size];
@@ -62,7 +57,6 @@ private:
 	int thread_num;
 }; // class krof_t
 
-const int krof_t::disallow_faces[6] = { -1, 0, -1, 2, -1, 4 };
 
 krof_t::krof_t(int thread_num)
 {
@@ -238,13 +232,13 @@ void krof_t::init(const char* filename)
 	if(!filename)
 	{
 		std::memset(edges1, 0xff, sizeof(edges1));
-		init0(edges1, &krof_t::encode_edges1);
+		init_heuristic<false>(edges1, &krof_t::encode_edges1);
 
 		std::memset(edges2, 0xff, sizeof(edges2));
-		init0(edges2, &krof_t::encode_edges2);
+		init_heuristic<false>(edges2, &krof_t::encode_edges2);
 
 		std::memset(corners, 0xff, sizeof(corners));
-		init0(corners, &krof_t::encode_corners);
+		init_heuristic<false>(corners, &krof_t::encode_corners);
 	} else {
 		std::ifstream ifs(filename, std::ios::binary);
 		ifs.read(reinterpret_cast<char*>(edges1), edges_size);
@@ -261,64 +255,8 @@ void krof_t::save(const char* filename) const
 	ofs.write(reinterpret_cast<const char*>(corners), corners_size);
 }
 
-void krof_t::init0(int8_t *buf, int(*encoder)(const cube_t&))
-{
-	std::queue<std::pair<cube_t, uint8_t>> que;
-	buf[(*encoder)(cube_t())] = 0;
-	que.push( { cube_t(), 0 | (6 << 4) } );
-
-	while(!que.empty())
-	{
-		auto u = que.front();
-		int face = u.second >> 4;
-		int step = u.second & 0xf;
-
-		for(int i = 0; i != 6; ++i)
-		{
-			if(i == face || disallow_faces[i] == face)
-				continue;
-
-			cube_t c = u.first;
-			for(int j = 0; j != 3; ++j)
-			{
-				c.rotate(face_t::face_type(i), 1);
-				int code = (*encoder)(c);
-				if(buf[code] == -1)
-				{
-					buf[code] = step + 1;
-					que.push( { c, (step + 1) | (i << 4) } );
-				}
-			}
-		}
-
-		que.pop();
-	}
-}
-
-template<int N, int S>
-int krof_t::encode_perm(const int8_t *p, const int *k) 
-{
-	int pos[N], elem[N];
-
-	for(int i = 0; i != N; ++i)
-		pos[i] = elem[i] = i;
-
-	int v = 0, t;
-	for(int i = 0; i != S; ++i)
-	{
-		t = pos[p[i]];
-		v += k[i] * t;
-		pos[elem[N - i - 1]] = t;
-		elem[t] = elem[N - i - 1];
-	}
-
-	return v;
-}
-
 int krof_t::estimate_edges(const cube_t& c) const
 {
-	static const int k[6] = { 1, 12, 132, 1320, 11880, 95040 };
-
 	block_info_t eb = c.getEdgeBlock();
 
 	int t;
@@ -339,15 +277,13 @@ int krof_t::estimate_edges(const cube_t& c) const
 	}
 
 	return std::max(
-		edges1[v1 + (encode_perm<12, 6>(perm1, k) << 6)],
-		edges2[v2 + (encode_perm<12, 6>(perm2, k) << 6)]
+		edges1[v1 + (encode_perm<12, 6>(perm1, factorial_12) << 6)],
+		edges2[v2 + (encode_perm<12, 6>(perm2, factorial_12) << 6)]
 	);
 }
 
 int krof_t::encode_edges1(const cube_t& c)
 {
-	static const int k[6] = { 1, 12, 132, 1320, 11880, 95040 };
-
 	block_info_t eb = c.getEdgeBlock();
 
 	int t, v = 0;
@@ -362,13 +298,11 @@ int krof_t::encode_edges1(const cube_t& c)
 		}
 	}
 
-	return v + (encode_perm<12, 6>(perm, k) << 6);
+	return v + (encode_perm<12, 6>(perm, factorial_12) << 6);
 }
 
 int krof_t::encode_edges2(const cube_t& c)
 {
-	static const int k[6] = { 1, 12, 132, 1320, 11880, 95040 };
-
 	block_info_t eb = c.getEdgeBlock();
 
 	int t, v = 0;
@@ -383,20 +317,19 @@ int krof_t::encode_edges2(const cube_t& c)
 		}
 	}
 
-	return v + (encode_perm<12, 6>(perm, k) << 6);
+	return v + (encode_perm<12, 6>(perm, factorial_12) << 6);
 }
 
 int krof_t::encode_corners(const cube_t& c) 
 {
 	static const int base0 = 2187; // 3^7
-	static const int k[7] = { 1, 8, 56, 336, 1680, 6720, 20160 };
 
 	block_info_t cb = c.getCornerBlock();
 	int v = 0;
 	for(int i = 0; i != 7; ++i)
 		v = v * 3 + cb.second[i];
 
-	return v + encode_perm<8, 7>(cb.first, k) * base0;
+	return v + encode_perm<8, 7>(cb.first, factorial_8) * base0;
 }
 
 } // namespace __krof_algo_impl
