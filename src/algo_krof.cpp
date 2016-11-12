@@ -1,17 +1,13 @@
 #include "algo.h"
 #include "cube.h"
 #include "search.hpp"
+#include "heuristic.hpp"
 #include <fstream>
 #include <cstdint>
 #include <cstring>
 #include <cstdlib>
 #include <algorithm>
-
-#include <thread>
-#include <future>
-#include <atomic>
-#include <mutex>
-#include <condition_variable>
+#include <functional>
 
 namespace rubik_cube
 {
@@ -33,21 +29,9 @@ private:
 	static int encode_edges1(const cube_t&);
 	static int encode_edges2(const cube_t&);
 private:
-	struct search_info_t
-	{
-		cube_t cb;
-		int g, face, depth;
-
-		move_seq_t* seq;
-
-		int tid;
-		std::atomic<int>* result_id;
-	};
-
 	int estimate(const cube_t&) const;
 	int estimate_edges(const cube_t&) const;
 	bool search(const search_info_t&) const;
-	bool search_multi_thread(const search_info_t&) const;
 private:
 	static const int corners_size = 88179840; // 3^7 * 8!
 	static const int edges_size = 42577920;   // 2^6 * 12! / 6!
@@ -82,7 +66,8 @@ move_seq_t krof_t::solve(cube_t cb) const
 			if(search(s)) 
 				return *s.seq;
 		} else {
-			if(search_multi_thread(s))
+			using namespace std::placeholders;
+			if(search_multi_thread(thread_num, s, std::bind(&krof_t::search, this, _1)))
 				return *s.seq;
 		}
 	}
@@ -143,80 +128,6 @@ bool krof_t::search(const search_info_t& s) const
 	}
 
 	return false;
-}
-
-bool krof_t::search_multi_thread(const search_info_t& s) const
-{
-	search_info_t infos[18];
-	move_seq_t seqs[18];
-
-	std::mutex cv_m;
-	std::condition_variable cv;
-	int working_thread = 0;
-
-	std::future<bool> results[18];
-	std::atomic<int> result_id;
-	result_id = -1;
-
-	for(int i = 0; i != 6; ++i)
-	{
-		cube_t cube = s.cb;
-		for(int j = 1; j <= 3; ++j)
-		{
-			int id = i * 3 + j - 1;
-			cube.rotate(face_t::face_type(i), 1);
-
-			seqs[id].resize(s.depth);
-			seqs[id][0] = move_step_t{face_t::face_type(i), j};
-
-			infos[id]           = s;
-			infos[id].tid       = id;
-			infos[id].cb        = cube;
-			infos[id].seq       = seqs + id;
-			infos[id].g         = 1;
-			infos[id].face      = i;
-			infos[id].result_id = &result_id;
-
-			std::packaged_task<bool()> task {
-				[&, id] () -> bool {
-
-					std::unique_lock<std::mutex> lk(cv_m);
-					cv.wait(lk, [&] { 
-						return working_thread < this->thread_num; 
-					} );
-
-					++working_thread;
-					lk.unlock();
-
-					bool ret = this->search(infos[id]);
-
-					{
-						std::lock_guard<std::mutex> lk(cv_m);
-						--working_thread;
-					}
-
-					cv.notify_one();
-
-					return ret;
-				}
-			};
-
-			results[id] = task.get_future();
-
-			std::thread{ std::move(task) }.detach();
-		}
-	}
-
-	cv.notify_all();
-
-	for(auto& fu : results)
-		fu.wait();
-
-	if(result_id >= 0)
-	{
-		*s.seq = seqs[result_id];
-		return true;
-	} else return false;
 }
 
 int krof_t::estimate(const cube_t& c) const

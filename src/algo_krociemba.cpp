@@ -1,6 +1,7 @@
 #include "algo.h"
 #include "cube.h"
 #include "search.hpp"
+#include "heuristic.hpp"
 #include <cstring>
 
 namespace rubik_cube
@@ -12,7 +13,7 @@ namespace __krociemba_algo_impl
 class krociemba_t : public algo_t
 {
 public:
-	krociemba_t() = default;
+	krociemba_t(int thread_num);
 	~krociemba_t() = default;
 public:
 	void init(const char*);
@@ -29,14 +30,6 @@ private:
 	template<int Size, typename PushFunc>
 	static void init_permutation(int, int8_t*, const PushFunc&, int);
 private:
-	struct search_info_t
-	{
-		cube_t cb;
-		int g, face, depth;
-
-		move_seq_t* seq;
-	};
-
 	template<int Phrase>
 	bool search_phrase(const search_info_t&) const;
 	template<int Phrase>
@@ -57,7 +50,13 @@ private:
 	int8_t phrase1_edges[phrase1_edges_size];
 	int8_t phrase1_co[phrase1_co_size];
 	int8_t phrase1_eo[phrase1_eo_size];
+	int thread_num;
 }; // class krociemba_t
+
+krociemba_t::krociemba_t(int thread_num)
+{
+	this->thread_num = thread_num;
+}
 
 template<int Size, typename PushFunc>
 void krociemba_t::init_permutation(int now, int8_t* v, const PushFunc& push, int avail)
@@ -142,10 +141,21 @@ move_seq_t krociemba_t::solve(cube_t cb) const
 		s.face  = 6;
 		s.depth = depth;
 
-		if(search_phrase<1>(s))
+		if(depth < 7 || thread_num == 1) 
 		{
-			solution = seq;
-			break;
+			s.tid = -1;
+			if(search_phrase<1>(s))
+			{
+				solution = *s.seq;
+				break;
+			}
+		} else {
+			using namespace std::placeholders;
+			if(search_multi_thread(thread_num, s, std::bind(&krociemba_t::search_phrase<1>, this, _1)))
+			{
+				solution = *s.seq;
+				break;
+			}
 		}
 	}
 
@@ -163,6 +173,7 @@ move_seq_t krociemba_t::solve(cube_t cb) const
 		s.seq   = &seq;
 		s.face  = 6;
 		s.depth = depth;
+		s.tid   = -1;
 
 		if(search_phrase<2>(s))
 		{
@@ -198,6 +209,9 @@ bool krociemba_t::search_phrase(const search_info_t& s) const
 	}
 #endif
 
+	if(s.tid >= 0 && *s.result_id >= 0)
+		return true;
+
 	search_info_t t = s;
 	t.g += 1;
 
@@ -223,7 +237,11 @@ bool krociemba_t::search_phrase(const search_info_t& s) const
 				(*s.seq)[s.g] = move_step_t{face_t::face_type(i), j};
 
 				if(h == 0)
+				{
+					if(s.tid >= 0)
+						*s.result_id = s.tid;
 					return true;
+				}
 
 				t.cb   = cube;
 				t.face = i;
@@ -325,9 +343,9 @@ int krociemba_t::encode_phrase1_eo(const cube_t& c)
 
 } // namespace __krociemba_algo_impl
 
-std::shared_ptr<algo_t> create_krociemba_algo()
+std::shared_ptr<algo_t> create_krociemba_algo(int thread_num)
 {
-	return std::make_shared<__krociemba_algo_impl::krociemba_t>();
+	return std::make_shared<__krociemba_algo_impl::krociemba_t>(thread_num);
 }
 
 } // namespace rubik_cube

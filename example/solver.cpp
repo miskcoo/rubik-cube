@@ -99,7 +99,7 @@ int main(int argc, char** argv)
 			algo->save("krof.dat");  
 		}
 	} else {
-		algo = create_krociemba_algo();
+		algo = create_krociemba_algo(thread_num);
 
 		std::puts("Initializing heuristic function table...");
 		algo->init();
