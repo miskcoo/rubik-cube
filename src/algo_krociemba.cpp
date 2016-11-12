@@ -20,9 +20,14 @@ public:
 	move_seq_t solve(cube_t) const;
 private:
 	static int encode_phrase1_edges(const cube_t&);
+	static int encode_phrase1_co(const cube_t&);
+	static int encode_phrase1_eo(const cube_t&);
 	static int encode_phrase2_corners(const cube_t&);
 	static int encode_phrase2_edges1(const cube_t&);
 	static int encode_phrase2_edges2(const cube_t&);
+private:
+	template<int Size, typename PushFunc>
+	static void init_permutation(int, int8_t*, const PushFunc&, int);
 private:
 	struct search_info_t
 	{
@@ -43,27 +48,77 @@ private:
 	static const int phrase2_corners_size = 40320; // 8!
 	static const int phrase2_edges1_size = 40320;  // 8!
 	static const int phrase2_edges2_size = 24;     // 4!
-	static const int phrase1_edges_size = 12 * 11 * 10 * 9;
+	static const int phrase1_edges_size = 12 * 11 * 10 * 9 * 16;
+	static const int phrase1_co_size = 6561;
+	static const int phrase1_eo_size = 1 << 8;
 	int8_t phrase2_corners[phrase2_corners_size];
 	int8_t phrase2_edges1[phrase2_edges1_size];
 	int8_t phrase2_edges2[phrase2_edges2_size];
 	int8_t phrase1_edges[phrase1_edges_size];
+	int8_t phrase1_co[phrase1_co_size];
+	int8_t phrase1_eo[phrase1_eo_size];
 }; // class krociemba_t
+
+template<int Size, typename PushFunc>
+void krociemba_t::init_permutation(int now, int8_t* v, const PushFunc& push, int avail)
+{
+	if(!avail) return push();
+
+	for(int i = 0; i != Size; ++i)
+	{
+		if((avail >> i) & 1)
+		{
+			avail ^= 1 << i;
+			v[now] = i;
+			init_permutation<Size>(now + 1, v, push, avail);
+			avail ^= 1 << i;
+		}
+	}
+}
 
 void krociemba_t::init(const char*)
 {
+	std::vector<cube_t> states;
+
 	std::memset(phrase2_corners, 0xff, sizeof(phrase2_corners));
 	init_heuristic<true>(phrase2_corners, &krociemba_t::encode_phrase2_corners);
 
 	std::memset(phrase2_edges1, 0xff, sizeof(phrase2_edges1));
 	init_heuristic<true>(phrase2_edges1, &krociemba_t::encode_phrase2_edges1);
 
-	std::vector<cube_t> states;
 	std::memset(phrase2_edges2, 0xff, sizeof(phrase2_edges2));
 	init_heuristic<true, true>(phrase2_edges2, &krociemba_t::encode_phrase2_edges2, &states);
 
+	for(cube_t& c : states)
+	{
+		// fix the orientation
+		int8_t *eo = const_cast<int8_t*>(c.getEdgeBlock().second);
+		eo[0] = eo[1] = eo[2] = eo[3] = 0;
+	}
+
 	std::memset(phrase1_edges, 0xff, sizeof(phrase1_edges));
 	init_heuristic<false>(phrase1_edges, &krociemba_t::encode_phrase1_edges, nullptr, states);
+
+	states.clear();
+
+	cube_t cube0;
+	int8_t *cube0_ep = const_cast<int8_t*>(cube0.getCornerBlock().first);
+	init_permutation<8>(0, cube0_ep, [&]() {
+		states.push_back(cube0);
+	}, (1 << 8) - 1 );
+
+	std::memset(phrase1_co, 0xff, sizeof(phrase1_co));
+	init_heuristic<false>(phrase1_co, &krociemba_t::encode_phrase1_co, nullptr, states);
+
+	states.clear();
+	cube0 = cube_t();
+
+	init_permutation<12>(4, cube0_ep, [&]() {
+		states.push_back(cube0);
+	}, ((1 << 8) - 1) << 4 );
+
+	std::memset(phrase1_eo, 0xff, sizeof(phrase1_eo));
+	init_heuristic<false>(phrase1_eo, &krociemba_t::encode_phrase1_eo, nullptr, states);
 }
 
 void krociemba_t::save(const char*) const
@@ -111,6 +166,13 @@ move_seq_t krociemba_t::solve(cube_t cb) const
 
 		if(search_phrase<2>(s))
 		{
+			if(seq.front().first == solution.back().first)
+			{
+				// merge rotation of same faces;
+				seq[0].second = (seq[0].second + solution.back().second) % 4;
+				solution.pop_back();
+			}  
+
 			for(move_step_t step : seq)
 				solution.push_back(step);
 			break;
@@ -185,19 +247,12 @@ int krociemba_t::estimate(const cube_t& c) const
 
 int krociemba_t::estimate_phrase1(const cube_t& c) const
 {
-	block_info_t cb = c.getCornerBlock();
-	block_info_t eb = c.getEdgeBlock();
-
-	int co = 0, eo = 0;
-	for(int i = 0; i != 8; ++i)
-		co += (cb.second[i] != 0);
-
-	for(int i = 0; i != 12; ++i)
-		eo += (eb.second[i] != 0);
-
 	return std::max(
-		(int)phrase1_edges[encode_phrase1_edges(c)],
-		std::max((co + 3) >> 2, (eo + 3) >> 2)
+		phrase1_edges[encode_phrase1_edges(c)],
+		std::max(
+			phrase1_eo[encode_phrase1_eo(c)],
+			phrase1_co[encode_phrase1_co(c)]
+		)
 	);
 }
 
@@ -237,12 +292,35 @@ int krociemba_t::encode_phrase2_edges2(const cube_t& c)
 int krociemba_t::encode_phrase1_edges(const cube_t& c) 
 {
 	block_info_t eb = c.getEdgeBlock();
+	int v = 0;
 	int8_t perm[4];
 	for(int i = 0; i != 12; ++i)
 		if(eb.first[i] < 4)
+		{
 			perm[eb.first[i]] = i;
+			v |= eb.second[i] << eb.first[i];
+		}
 
-	return encode_perm<12, 4>(perm, factorial_12);
+	return v | (encode_perm<12, 4>(perm, factorial_12) << 4);
+}
+
+int krociemba_t::encode_phrase1_co(const cube_t& c)
+{
+	static const int base[] = { 1, 3, 9, 27, 81, 243, 729, 2187 };
+	block_info_t cb = c.getCornerBlock();
+	int v = 0;
+	for(int i = 0; i != 8; ++i)
+		v += cb.second[i] * base[i];
+	return v;
+}
+
+int krociemba_t::encode_phrase1_eo(const cube_t& c)
+{
+	block_info_t eb = c.getEdgeBlock();
+	int v = 0;
+	for(int i = 0; i != 8; ++i)
+		v |= eb.second[i + 4] << i;
+	return v;
 }
 
 } // namespace __krociemba_algo_impl
