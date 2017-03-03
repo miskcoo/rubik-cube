@@ -34,8 +34,8 @@ void output_usage(std::string str = "")
 	std::puts("   when using Krof, default is 15.");
 	std::puts("   when using Krociemba, default is 200.");
 	std::puts("-a which algorithm to be used to solve the cube.");
-	std::puts("   only two algorithms available: krof, krociemba.");
-	std::puts("   [default: krociemba]");
+	std::puts("   only two algorithms available: krof, kociemba.");
+	std::puts("   [default: kociemba]");
 	std::exit(0);
 }
 
@@ -54,11 +54,11 @@ int main(int argc, char** argv)
 		}
 	}
 
-	std::string algo_type = "krociemba";
+	std::string algo_type = "kociemba";
 
 	if(M.count("a"))
 	{
-		if(M["a"] != "krociemba" && M["a"] != "krof")
+		if(M["a"] != "kociemba" && M["a"] != "krof")
 			output_usage();
 		algo_type = M["a"];
 	}
@@ -99,7 +99,7 @@ int main(int argc, char** argv)
 			algo->save("krof.dat");  
 		}
 	} else {
-		algo = create_krociemba_algo(thread_num);
+		algo = create_kociemba_algo(thread_num);
 
 		std::puts("Initializing heuristic function table...");
 		algo->init();

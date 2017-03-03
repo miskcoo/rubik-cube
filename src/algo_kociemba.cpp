@@ -7,14 +7,14 @@
 namespace rubik_cube
 {
 
-namespace __krociemba_algo_impl
+namespace __kociemba_algo_impl
 {
 
-class krociemba_t : public algo_t
+class kociemba_t : public algo_t
 {
 public:
-	krociemba_t(int thread_num);
-	~krociemba_t() = default;
+	kociemba_t(int thread_num);
+	~kociemba_t() = default;
 public:
 	void init(const char*);
 	void save(const char*) const;
@@ -51,15 +51,15 @@ private:
 	int8_t phrase1_co[phrase1_co_size];
 	int8_t phrase1_eo[phrase1_eo_size];
 	int thread_num;
-}; // class krociemba_t
+}; // class kociemba_t
 
-krociemba_t::krociemba_t(int thread_num)
+kociemba_t::kociemba_t(int thread_num)
 {
 	this->thread_num = thread_num;
 }
 
 template<int Size, typename PushFunc>
-void krociemba_t::init_permutation(int now, int8_t* v, const PushFunc& push, int avail)
+void kociemba_t::init_permutation(int now, int8_t* v, const PushFunc& push, int avail)
 {
 	if(!avail) return push();
 
@@ -75,18 +75,18 @@ void krociemba_t::init_permutation(int now, int8_t* v, const PushFunc& push, int
 	}
 }
 
-void krociemba_t::init(const char*)
+void kociemba_t::init(const char*)
 {
 	std::vector<cube_t> states;
 
 	std::memset(phrase2_corners, 0xff, sizeof(phrase2_corners));
-	init_heuristic<true>(phrase2_corners, &krociemba_t::encode_phrase2_corners);
+	init_heuristic<true>(phrase2_corners, &kociemba_t::encode_phrase2_corners);
 
 	std::memset(phrase2_edges1, 0xff, sizeof(phrase2_edges1));
-	init_heuristic<true>(phrase2_edges1, &krociemba_t::encode_phrase2_edges1);
+	init_heuristic<true>(phrase2_edges1, &kociemba_t::encode_phrase2_edges1);
 
 	std::memset(phrase2_edges2, 0xff, sizeof(phrase2_edges2));
-	init_heuristic<true, true>(phrase2_edges2, &krociemba_t::encode_phrase2_edges2, &states);
+	init_heuristic<true, true>(phrase2_edges2, &kociemba_t::encode_phrase2_edges2, &states);
 
 	for(cube_t& c : states)
 	{
@@ -96,7 +96,7 @@ void krociemba_t::init(const char*)
 	}
 
 	std::memset(phrase1_edges, 0xff, sizeof(phrase1_edges));
-	init_heuristic<false>(phrase1_edges, &krociemba_t::encode_phrase1_edges, nullptr, states);
+	init_heuristic<false>(phrase1_edges, &kociemba_t::encode_phrase1_edges, nullptr, states);
 
 	states.clear();
 
@@ -107,7 +107,7 @@ void krociemba_t::init(const char*)
 	}, (1 << 8) - 1 );
 
 	std::memset(phrase1_co, 0xff, sizeof(phrase1_co));
-	init_heuristic<false>(phrase1_co, &krociemba_t::encode_phrase1_co, nullptr, states);
+	init_heuristic<false>(phrase1_co, &kociemba_t::encode_phrase1_co, nullptr, states);
 
 	states.clear();
 	cube0 = cube_t();
@@ -117,15 +117,15 @@ void krociemba_t::init(const char*)
 	}, ((1 << 8) - 1) << 4 );
 
 	std::memset(phrase1_eo, 0xff, sizeof(phrase1_eo));
-	init_heuristic<false>(phrase1_eo, &krociemba_t::encode_phrase1_eo, nullptr, states);
+	init_heuristic<false>(phrase1_eo, &kociemba_t::encode_phrase1_eo, nullptr, states);
 }
 
-void krociemba_t::save(const char*) const
+void kociemba_t::save(const char*) const
 {
 	// do nothing
 }
 
-move_seq_t krociemba_t::solve(cube_t cb) const
+move_seq_t kociemba_t::solve(cube_t cb) const
 {
 	move_seq_t solution;
 
@@ -151,7 +151,7 @@ move_seq_t krociemba_t::solve(cube_t cb) const
 			}
 		} else {
 			using namespace std::placeholders;
-			if(search_multi_thread(thread_num, s, std::bind(&krociemba_t::search_phrase<1>, this, _1)))
+			if(search_multi_thread(thread_num, s, std::bind(&kociemba_t::search_phrase<1>, this, _1)))
 			{
 				solution = *s.seq;
 				break;
@@ -198,7 +198,7 @@ move_seq_t krociemba_t::solve(cube_t cb) const
 }
 
 template<int Phrase>
-bool krociemba_t::search_phrase(const search_info_t& s) const
+bool kociemba_t::search_phrase(const search_info_t& s) const
 {
 #ifdef DEBUG
 	static uint64_t cnt = 0;
@@ -256,14 +256,14 @@ bool krociemba_t::search_phrase(const search_info_t& s) const
 }
 
 template<int Phrase>
-int krociemba_t::estimate(const cube_t& c) const
+int kociemba_t::estimate(const cube_t& c) const
 {
 	if(Phrase == 1) 
 		return estimate_phrase1(c);
 	return estimate_phrase2(c);
 }
 
-int krociemba_t::estimate_phrase1(const cube_t& c) const
+int kociemba_t::estimate_phrase1(const cube_t& c) const
 {
 	return std::max(
 		phrase1_edges[encode_phrase1_edges(c)],
@@ -274,7 +274,7 @@ int krociemba_t::estimate_phrase1(const cube_t& c) const
 	);
 }
 
-int krociemba_t::estimate_phrase2(const cube_t& c) const
+int kociemba_t::estimate_phrase2(const cube_t& c) const
 {
 	return std::max(
 		phrase2_corners[encode_phrase2_corners(c)],
@@ -285,13 +285,13 @@ int krociemba_t::estimate_phrase2(const cube_t& c) const
 	);
 }
 
-int krociemba_t::encode_phrase2_corners(const cube_t& c) 
+int kociemba_t::encode_phrase2_corners(const cube_t& c) 
 {
 	block_info_t cb = c.getCornerBlock();
 	return encode_perm<8, 7>(cb.first, factorial_8);
 }
 
-int krociemba_t::encode_phrase2_edges1(const cube_t& c) 
+int kociemba_t::encode_phrase2_edges1(const cube_t& c) 
 {
 	block_info_t eb = c.getEdgeBlock();
 	int8_t perm[8];
@@ -301,13 +301,13 @@ int krociemba_t::encode_phrase2_edges1(const cube_t& c)
 	return encode_perm<8, 7>(perm, factorial_8);
 }
 
-int krociemba_t::encode_phrase2_edges2(const cube_t& c) 
+int kociemba_t::encode_phrase2_edges2(const cube_t& c) 
 {
 	block_info_t eb = c.getEdgeBlock();
 	return encode_perm<4, 3>(eb.first, factorial_4);
 }
 
-int krociemba_t::encode_phrase1_edges(const cube_t& c) 
+int kociemba_t::encode_phrase1_edges(const cube_t& c) 
 {
 	block_info_t eb = c.getEdgeBlock();
 	int v = 0;
@@ -322,7 +322,7 @@ int krociemba_t::encode_phrase1_edges(const cube_t& c)
 	return v | (encode_perm<12, 4>(perm, factorial_12) << 4);
 }
 
-int krociemba_t::encode_phrase1_co(const cube_t& c)
+int kociemba_t::encode_phrase1_co(const cube_t& c)
 {
 	static const int base[] = { 1, 3, 9, 27, 81, 243, 729, 2187 };
 	block_info_t cb = c.getCornerBlock();
@@ -332,7 +332,7 @@ int krociemba_t::encode_phrase1_co(const cube_t& c)
 	return v;
 }
 
-int krociemba_t::encode_phrase1_eo(const cube_t& c)
+int kociemba_t::encode_phrase1_eo(const cube_t& c)
 {
 	block_info_t eb = c.getEdgeBlock();
 	int v = 0;
@@ -341,11 +341,11 @@ int krociemba_t::encode_phrase1_eo(const cube_t& c)
 	return v;
 }
 
-} // namespace __krociemba_algo_impl
+} // namespace __kociemba_algo_impl
 
-std::shared_ptr<algo_t> create_krociemba_algo(int thread_num)
+std::shared_ptr<algo_t> create_kociemba_algo(int thread_num)
 {
-	return std::make_shared<__krociemba_algo_impl::krociemba_t>(thread_num);
+	return std::make_shared<__kociemba_algo_impl::kociemba_t>(thread_num);
 }
 
 } // namespace rubik_cube

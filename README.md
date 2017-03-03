@@ -18,5 +18,5 @@ solver -tra
   * When using Krof algorithm, the default value is 15.
   * When using Krociemba algorithm, the default value is 200.
 * *-a* specify which algorithm will be used to solve the cube. 
-  * Only two algorithms are available: *krof*, *krociemba*. 
-  * The default algorithm is krociemba.
+  * Only two algorithms are available: *krof*, *kociemba*. 
+  * The default algorithm is kociemba.

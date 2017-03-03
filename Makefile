@@ -7,7 +7,7 @@ LFLAGS = -pthread
 SRCS = src/cube.cpp \
 	   src/viewer_gl.cpp \
 	   src/algo_krof.cpp \
-	   src/algo_krociemba.cpp
+	   src/algo_kociemba.cpp
 
 EXAMPLE_SRCS = example/solver.cpp
 EXAMPLE_OBJS = $(EXAMPLE_SRCS:.cpp=.o) 
