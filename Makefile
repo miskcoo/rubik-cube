@@ -5,6 +5,7 @@ CFLAGS = -Wall -O2 -std=c++11 -pipe -DDEBUG
 LFLAGS = -pthread
 
 SRCS = src/cube.cpp \
+	   src/cube4.cpp \
 	   src/viewer_gl.cpp \
 	   src/algo_krof.cpp \
 	   src/algo_kociemba.cpp

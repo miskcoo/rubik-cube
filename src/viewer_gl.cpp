@@ -2,6 +2,7 @@
 #include "virtual_rotate.hpp"
 #include <memory>
 #include <chrono>
+#include <tuple>
 #include <queue>
 #include <algorithm>
 #include <GL/gl.h>
@@ -57,19 +58,23 @@ public:
 	void run();
 	bool init(int&, char**&);
 	void set_cube(const cube_t&);
+	void set_cube(const cube4_t&);
 	void set_rotate_duration(double);
 	void add_rotate(face_t::face_type, int);
+	void add_rotate(face_t::face_type, int, int);
 public:
 	static void on_resize(GLFWwindow*, int, int);
 	static void on_mouse_button(GLFWwindow*, int, int, int);
 	static void on_mouse_move(GLFWwindow*, double, double);
 private:
-	void draw_cube();
+	template<typename CubeType>
+	void draw_cube(const CubeType&);
 	void draw_block(GLfloat x, GLfloat y, GLfloat z, GLfloat size, block_t, GLenum);
 	void update_rotate();
 	void set_color(int);
 private:
-	typedef std::pair<face_t::face_type, int> rotate_que_t;
+	// face_type, depth, cnt
+	typedef std::tuple<face_t::face_type, int, int> rotate_que_t;
 	std::queue<rotate_que_t> rotate_que;
 
 	int rotate_mask[3];
@@ -79,13 +84,17 @@ private:
 
 	virtual_ball_t vball;
 
+	int cube_size;
 	cube_t cube;
+	cube4_t cube4;
+
 	GLFWwindow* window;
 };
 
 viewer_gl::viewer_gl() 
 {
 	window = nullptr;
+	cube_size = 3;
 	rotate_duration = 1;
 	rotate_deg = rotate_vec = 0;
 	std::fill(rotate_mask, rotate_mask + 3, -1);
@@ -128,7 +137,9 @@ void viewer_gl::run()
 
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		update_rotate();
-		draw_cube();
+		if(cube_size == 3)
+			draw_cube(cube);
+		else draw_cube(cube4);
 
 		glfwSwapBuffers(window);
 	}
@@ -138,12 +149,24 @@ void viewer_gl::run()
 
 void viewer_gl::set_cube(const cube_t& cube)
 {
+	cube_size = 3;
 	this->cube = cube;
+}
+
+void viewer_gl::set_cube(const cube4_t& cube)
+{
+	cube_size = 4;
+	this->cube4 = cube;
 }
 
 void viewer_gl::add_rotate(face_t::face_type type, int cnt)
 {
-	rotate_que.push( { type, cnt % 4 } );
+	add_rotate(type, 1, cnt);
+}
+
+void viewer_gl::add_rotate(face_t::face_type type, int depth, int cnt)
+{
+	rotate_que.push( { type, depth, cnt % 4 } );
 }
 
 void viewer_gl::update_rotate()
@@ -151,47 +174,51 @@ void viewer_gl::update_rotate()
 	if(rotate_que.empty())
 		return;
 
-	auto r = rotate_que.front();
+	face_t::face_type ftype;
+	int depth, cnt;
+	std::tie(ftype, depth, cnt) = rotate_que.front();
+
 	if(!rotate_manager.is_active())
 	{
 		rotate_manager.set(rotate_duration);
 		std::fill(rotate_mask, rotate_mask + 3, -1);
 
-		rotate_vec = r.second < 0 ? -1 : 1;
+		rotate_vec = cnt < 0 ? -1 : 1;
 
-		switch(r.first)
+		switch(ftype)
 		{
 		case face_t::top:
-			rotate_mask[0] = 2;
+			rotate_mask[0] = cube_size - depth;
 			break;
 		case face_t::bottom:
-			rotate_mask[0] = 0;
+			rotate_mask[0] = depth - 1;
 			rotate_vec = -rotate_vec;
 			break;
 		case face_t::left:
-			rotate_mask[2] = 0;
+			rotate_mask[2] = depth - 1;
 			rotate_vec = -rotate_vec;
 			break;
 		case face_t::right:
-			rotate_mask[2] = 2;
+			rotate_mask[2] = cube_size - depth;
 			break;
 		case face_t::front:
-			rotate_mask[1] = 2;
+			rotate_mask[1] = cube_size - depth;
 			rotate_vec = -rotate_vec;
 			break;
 		case face_t::back:
-			rotate_mask[1] = 0;
+			rotate_mask[1] = depth - 1;
 			break;
 		}
 	}
 
 	double rate = rotate_manager.get();
-	rotate_deg = std::abs(r.second) * 90.0 * rate;
+	rotate_deg = std::abs(cnt) * 90.0 * rate;
 
 	if(!rotate_manager.is_active())
 	{
 		std::fill(rotate_mask, rotate_mask + 3, -1);
-		cube.rotate(r.first, r.second);
+		if(cube_size == 3) cube.rotate(ftype, cnt);
+		else cube4.rotate(ftype, depth, cnt);
 		rotate_que.pop();
 	}
 }
@@ -268,7 +295,8 @@ void viewer_gl::draw_block(GLfloat x, GLfloat y, GLfloat z, GLfloat s, block_t c
 	glEnd();
 }
 
-void viewer_gl::draw_cube()
+template<typename CubeType>
+void viewer_gl::draw_cube(const CubeType& cube)
 {
 	class rotate_guard
 	{
@@ -291,23 +319,23 @@ void viewer_gl::draw_cube()
 		}
 	};
 
-	GLfloat size = 0.25f;
+	GLfloat size = 0.8f / cube_size;
 
 	glPushMatrix();
 
 	vball.rotate();
 	glLineWidth(1.5f);
 
-	GLfloat base = -size * 1.5f, x, y, z;
+	GLfloat base = -size * cube_size * 0.5f, x, y, z;
 	x = y = base, z = -base;
 
-	for(int i = 0; i != 3; ++i, y += size, x = base, z = -base)
+	for(int i = 0; i != cube_size; ++i, y += size, x = base, z = -base)
 	{
 		rotate_guard _guard(rotate_mask[0], i, rotate_deg, 0, rotate_vec, 0);
-		for(int j = 0; j != 3; ++j, z -= size, x = base)
+		for(int j = 0; j != cube_size; ++j, z -= size, x = base)
 		{
 			rotate_guard _guard(rotate_mask[1], j, rotate_deg, 0, 0, rotate_vec);
-			for(int k = 0; k != 3; ++k, x += size)
+			for(int k = 0; k != cube_size; ++k, x += size)
 			{
 				rotate_guard _guard(rotate_mask[2], k, rotate_deg, rotate_vec, 0, 0);
 				draw_block(x, y, z, size, cube.getBlock(i, j, k), GL_QUADS);
