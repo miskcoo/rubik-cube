@@ -2,6 +2,8 @@
 
 A Rubik's Cube solver implemented by C++ and OpenGL. You can use your mouse to rotate the cube.
 
+See [HERE](http://blog.miskcoo.com/2017/03/how-to-reconstruct-rubik-cube)(in Chinese) for more details about the algorithm.
+
 ![screenshot](https://raw.githubusercontent.com/miskcoo/rubik-cube/master/demo.gif)
 
 ## Requirement
