@@ -3,6 +3,7 @@
 #include "search.hpp"
 #include "heuristic.hpp"
 #include <cstring>
+#include <functional>
 
 namespace rubik_cube
 {
